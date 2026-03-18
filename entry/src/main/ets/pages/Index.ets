@@ -148,8 +148,9 @@ struct Index {
          Column(){
 
          }
-         .width('380vp')
-         .height('420vp')
+         .width('300vp')
+         .height('350vp')
+         .backgroundColor('#13EC5B')
        }
      }
      .width('100%')
@@ -180,6 +181,7 @@ if (this.currentIndex=1){
      Text('返回上一页')
        .margin({top:30})
        .fontColor('#64748B')
+
 
 }
 
