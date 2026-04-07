@@ -19,6 +19,7 @@
         "label": "$string:EntryAbility_label",
         "startWindowIcon": "$media:startIcon",
         "startWindowBackground": "$color:start_window_background",
+        //程序主入口
         "exported": true,
         "skills": [
           {
@@ -30,6 +31,33 @@
             ]
           }
         ]
+      },
+      {
+        "name": "LoginAbility",
+        "srcEntry": "./ets/Ability/LoginAbility.ets",
+        "description": "$string:LoginAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:LoginAbility_label",
+        "startWindowIcon": "$media:startIcon",
+        "startWindowBackground": "$color:start_window_background"
+      },
+      {
+        "name": "Register",
+        "srcEntry": "./ets/Ability/RegisterAbility.ets",
+        "description": "$string:Register_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:Register_label",
+        "startWindowIcon": "$media:startIcon",
+        "startWindowBackground": "$color:start_window_background"
+      },
+      {
+        "name": "AlarmAbility",
+        "srcEntry": "./ets/Ability/AlarmAbility.ets",
+        "description": "$string:AlarmAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:AlarmAbility_label",
+        "startWindowIcon": "$media:startIcon",
+        "startWindowBackground": "$color:start_window_background"
       }
     ],
     "extensionAbilities": [

@@ -1,5 +1,20 @@
 {
   "src": [
-    "pages/Index"
+    "pages/Index",
+    "pages/Login",
+    "pages/Register",
+    "pages/LostPassword",
+    "pages/Yibiaopan",
+    "pages/Alarm",
+    "pages/Equipment",
+    "pages/Add",
+    "pages/Count",
+    "pages/Lrrigate",
+    "pages/SearchAll",
+    "pages/Setting",
+    "pages/AllHistory",
+    "pages/Task",
+    "pages/NewTask",
+    "pages/Rule"
   ]
 }

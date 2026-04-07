@@ -11,6 +11,30 @@
     {
       "name": "EntryAbility_label",
       "value": "label"
+    },
+    {
+      "name": "LoginAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "LoginAbility_label",
+      "value": "label"
+    },
+    {
+      "name": "Register_desc",
+      "value": "description"
+    },
+    {
+      "name": "Register_label",
+      "value": "label"
+    },
+    {
+      "name": "AlarmAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "AlarmAbility_label",
+      "value": "label"
     }
   ]
 }
