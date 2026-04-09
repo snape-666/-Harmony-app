@@ -15,6 +15,7 @@
     "pages/AllHistory",
     "pages/Task",
     "pages/NewTask",
-    "pages/Rule"
+    "pages/Rule",
+    "pages/Internet"
   ]
 }

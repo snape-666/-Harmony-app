@@ -113,7 +113,7 @@ export struct Add {
   card(){
     Column(){
       Row(){
-        Image($r('app.media.setting'))
+        Image($r('app.media.settingicon'))
           .width('45vp')
           .height('45vp')
           .objectFit(ImageFit.Contain)

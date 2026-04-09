@@ -13,6 +13,10 @@ import {AllHistory} from './AllHistory'
 import {Task} from './Task'
 import {NewTask} from './NewTask'
 import {Rule} from './Rule'
+import {Setting} from './Setting'
+import {Internet} from './Internet'
+
+
 
 
 
@@ -404,6 +408,12 @@ export struct Index {
     }
     else if (name==='Rule') {
       Rule({params:param})
+    }
+    else if (name==='Setting') {
+      Setting({params:param})
+    }
+    else if (name==='Internet') {
+      Internet({params:param})
     }
 
 
