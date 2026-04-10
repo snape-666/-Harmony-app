@@ -43,6 +43,18 @@
     {
       "name": "internet_reason",
       "value": "用于请求网络"
+    },
+    {
+      "name": "reason_camera",
+      "value": "用于拍照识图"
+    },
+    {
+      "name": "Notification_Controller",
+      "value": "通知权限用于发送阈值报警"
+    },
+    {
+      "name": "media_permission_reason",
+      "value": "实现GPS获取拍照位置"
     }
   ]
 }

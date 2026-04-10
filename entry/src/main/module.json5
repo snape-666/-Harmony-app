@@ -30,8 +30,37 @@
           ],
           "when": "inuse"
         }
+      },
+      {
+        "name": "ohos.permission.CAMERA",
+        "reason": "$string:reason_camera",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        },
+      },
+      {
+        "name": "ohos.permission.NOTIFICATION_CONTROLLER",
+        "reason": "$string:Notification_Controller",
+        "usedScene": {
+          "abilities": ["EntryAbility"],
+          "when": "inuse"
+        }
+      },
+      {
+        "name": "ohos.permission.MEDIA_LOCATION",
+        "reason": "$string:media_permission_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "inuse"
+        }
       }
-    ],
+      ],
+
     "abilities": [
       {
         "name": "EntryAbility",

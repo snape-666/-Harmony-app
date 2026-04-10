@@ -16,6 +16,8 @@
     "pages/Task",
     "pages/NewTask",
     "pages/Rule",
-    "pages/Internet"
+    "pages/Internet",
+    "pages/AIidentify",
+    "pages/AIResult"
   ]
 }

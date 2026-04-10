@@ -15,10 +15,8 @@ import {NewTask} from './NewTask'
 import {Rule} from './Rule'
 import {Setting} from './Setting'
 import {Internet} from './Internet'
-
-
-
-
+import { AIidentify } from './AIidentify';
+import {AIResult} from './AIResult'
 
 
 interface swiperItem{
@@ -415,7 +413,12 @@ export struct Index {
     else if (name==='Internet') {
       Internet({params:param})
     }
-
+    else if (name==='AIidentify') {
+     AIidentify({params:param})
+    }
+    else if (name==='AIResult') {
+      AIResult({params:param})
+    }
 
   }
 }

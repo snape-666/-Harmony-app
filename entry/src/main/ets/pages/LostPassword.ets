@@ -539,8 +539,7 @@ export struct LostPassword {
                         width: 1
                       })
                       .onChange((value: string) => {
-                        // this.newPassword = value;
-                        //this.passwordError = '';
+
                         this.onNewPasswordChange(value);
                       })
                     if (this.passwordError) {

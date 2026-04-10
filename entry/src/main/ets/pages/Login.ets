@@ -189,6 +189,7 @@ interface requestInfo {
           from: 'Login',
           username: this.username
         });
+        console.log('跳转到设置页，传入的用户名:', this.username);
       } else {
         // 登录失败
         this.loginError = loginResult.message || '登录失败，请检查用户名和密码';

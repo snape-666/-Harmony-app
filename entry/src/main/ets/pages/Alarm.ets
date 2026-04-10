@@ -1,6 +1,69 @@
 import sendableColorSpaceManager from '@ohos.graphics.sendableColorSpaceManager';
 import { JSON } from '@kit.ArkTS';
 import { NavigationManager } from '../common/NavigationManager'
+import { preferences } from '@kit.ArkData';
+import { notificationManager } from '@kit.NotificationKit';
+import { http } from '@kit.NetworkKit';
+import { common } from '@kit.AbilityKit';
+import { vibrator } from '@kit.SensorServiceKit';
+// 阈值配置类（使用class而不是interface）
+export class ThresholdConfig {
+  tempMin: number = 18;
+  tempMax: number = 32;
+  humiMin: number = 40;
+  humiMax: number = 80;
+  co2Min: number = 300;
+  co2Max: number = 1200;
+  lightMin: number = 5000;
+  lightMax: number = 25000;
+  isChecked: boolean = false;
+
+  constructor() {
+    // 默认值已在属性中初始化
+  }
+}
+// 传感器数据类型
+interface SensorData {
+  air_humidity: string;
+  soil_humidity: string;
+  soil_temperature: string;
+  air_temperature: string;
+  light: string;
+  co2: string;
+  date: string;
+  time: string;
+}
+// API响应类型
+interface ApiResponse {
+  success: boolean;
+  count: number;
+  data: Record<string, SensorData>;
+}
+
+// 报警记录类型（用于防重复）
+interface AlarmRecord {
+  temp: boolean;
+  humi: boolean;
+  co2: boolean;
+  light: boolean;
+}
+
+interface config {
+  tempMin: number;
+  tempMax: number;
+  humiMin: number;
+  humiMax: number;
+  co2Min: number;
+  co2Max: number;
+  lightMin: number;
+  lightMax: number;
+  isChecked: boolean;
+}
+
+interface AlarmColor {
+  text: string;
+  color: string;
+}
 
 @Entry
 @Component
@@ -8,6 +71,26 @@ export struct Alarm {
 
   @State params: Record<string, Object> = {};
   @State isChecked: boolean = false;
+
+  // 当前实时数据
+  @State currentTemp: number = 0;
+  @State currentHumi: number = 0;
+  @State currentCo2: number = 0;
+  @State currentLight: number = 0;
+
+  // 报警状态（用于UI显示红色）
+  @State tempAlarm: boolean = false;
+  @State humiAlarm: boolean = false;
+  @State co2Alarm: boolean = false;
+  @State lightAlarm: boolean = false;
+
+  // 防重复报警记录（已发送过的报警不再重复发送）
+  private lastAlarmState: AlarmRecord = {
+    temp: false,
+    humi: false,
+    co2: false,
+    light: false
+  };
   // 温度
   @State tempMin: number = 18;
   @State tempMax: number = 32;
@@ -41,9 +124,295 @@ export struct Alarm {
   private co2MaxController: TextInputController = new TextInputController();
   private lightMinController: TextInputController = new TextInputController();
   private lightMaxController: TextInputController = new TextInputController();
-
+  private dataPreferences?: preferences.Preferences;
+  private readonly THRESHOLD_KEY: string = 'threshold_config';
+  private readonly API_URL: string = 'https://guet-farm.netlify.app/.netlify/functions/getData';
+  private refreshTimer?: number;
   aboutToAppear(): void {
     console.log('接收的参数', JSON.stringify(this.params));
+    this.initPreferences();
+    this.loadThresholdConfig();
+    this.fetchSensorData();
+    this.startAutoRefresh();
+    // 请求通知权限
+    this.requestNotificationPermission();
+  }
+
+  aboutToDisappear(): void {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+    }
+  }
+
+  // 获取上下文
+  getContext(): Context | undefined {
+    const uiContext = this.getUIContext();
+    if (uiContext) {
+      return uiContext.getHostContext();
+    }
+    return undefined;
+  }
+
+  // 显示Toast
+  showToast(message: string) {
+    try {
+      const uiContext = this.getUIContext();
+      if (uiContext) {
+        uiContext.getPromptAction().openToast({
+          message: message,
+          duration: 2000,
+          bottom: 100
+        });
+      } else {
+        console.log('Toast提示:', message);
+      }
+    } catch (error) {
+      console.error('Toast显示失败:', error);
+      console.log('Toast提示:', message);
+    }
+  }
+
+  // 请求通知权限
+  async requestNotificationPermission() {
+    try {
+      // 获取UIAbilityContext
+      const context = this.getContext() as common.UIAbilityContext;
+
+      // 检查通知是否已开启
+      const isEnabled = await notificationManager.isNotificationEnabled();
+
+      if (!isEnabled) {
+        // 请求开启通知（需要传入context参数）
+        await notificationManager.requestEnableNotification(context);
+        console.log('通知权限申请成功');
+      } else {
+        console.log('通知权限已开启');
+      }
+    } catch (error) {
+      console.error('获取通知权限失败:', error);
+    }
+  }
+
+  // 发送系统通知（带震动和声音）
+  async sendNotification(title: string, content: string) {
+    if (!this.isChecked) {
+      console.log('推送通知开关已关闭，不发送通知');
+      return;
+    }
+
+    try {
+      // 创建通知请求
+      const notificationRequest: notificationManager.NotificationRequest = {
+        id: Date.now(), // 唯一ID
+        content: {
+          contentType: 0,  // 0 = NOTIFICATION_CONTENT_BASIC_TEXT
+          normal: {
+            title: title,
+            text: content
+          }
+        },
+        deliveryTime: Date.now(),
+        showDeliveryTime: true
+      };
+
+      // 发布通知
+      await notificationManager.publish(notificationRequest);
+      console.log('通知发送成功:', title);
+
+      // 播放默认通知音（系统会自动播放，不需要额外代码）
+      // 震动也是系统自动处理，slotType 设置为 CONTENT_INFORMATION 会触发震动
+
+      // 单独触发震动（替代slotType）
+      try {
+        await vibrator.startVibration({
+          type: 'time',
+          duration: 2000
+        }, {
+          id: 0,
+          usage: 'alarm'
+        });
+      } catch (vibError) {
+        console.error('震动失败:', vibError);
+      }
+    } catch (error) {
+      console.error('发送通知失败:', error);
+    }
+  }
+
+  // 初始化本地存储
+  async initPreferences() {
+    try {
+      const context = this.getContext();
+      if (context) {
+        this.dataPreferences = await preferences.getPreferences(context, 'alarm_prefs');
+        console.log('本地存储初始化成功');
+      }
+    } catch (error) {
+      console.error('本地存储初始化失败:', error);
+    }
+  }
+
+  // 加载阈值配置
+  async loadThresholdConfig() {
+    try {
+      if (!this.dataPreferences) return;
+      const configStr = await this.dataPreferences.get(this.THRESHOLD_KEY, '');
+      if (configStr && configStr !== '') {
+        const arr= JSON.parse(configStr as string);
+        if (Array.isArray(arr) && arr.length >= 9) {
+          this.tempMin = arr[0];
+          this.tempMax = arr[1];
+          this.humiMin = arr[2];
+          this.humiMax = arr[3];
+          this.co2Min = arr[4];
+          this.co2Max = arr[5];
+          this.lightMin = arr[6];
+          this.lightMax = arr[7];
+          this.isChecked = arr[8];
+          console.log('加载阈值配置成功');
+        }
+      }
+    } catch (error) {
+      console.error('加载阈值配置失败:', error);
+    }
+  }
+
+  // 保存阈值配置
+  async saveThresholdConfig() {
+    try {
+      if (!this.dataPreferences) return;
+      const config: config= {
+        tempMin: this.tempMin,
+        tempMax: this.tempMax,
+        humiMin: this.humiMin,
+        humiMax: this.humiMax,
+        co2Min: this.co2Min,
+        co2Max: this.co2Max,
+        lightMin: this.lightMin,
+        lightMax: this.lightMax,
+        isChecked: this.isChecked
+      };
+      await this.dataPreferences.put(this.THRESHOLD_KEY, JSON.stringify(config));
+      await this.dataPreferences.flush();
+      console.log('保存阈值配置成功');
+    } catch (error) {
+      console.error('保存阈值配置失败:', error);
+    }
+  }
+
+  // 获取传感器数据
+  async fetchSensorData() {
+    try {
+      const httpRequest: http.HttpRequest = http.createHttp();
+      const response = await httpRequest.request(this.API_URL, {
+        method: http.RequestMethod.GET,
+        header: { 'Content-Type': 'application/json' },
+        connectTimeout: 30000,
+        readTimeout: 30000
+      });
+
+      if (response.responseCode === 200) {
+        const outerResult = JSON.parse(response.result as string) as ApiResponse;
+        if (outerResult.success && outerResult.data) {
+          const dataPoints = Object.values(outerResult.data);
+          const latestData = dataPoints[dataPoints.length - 1];
+          if (latestData) {
+            // 解析数值（去掉单位）
+            const newTemp = parseFloat(latestData.air_temperature) || 0;
+            const newHumi = parseFloat(latestData.air_humidity) || 0;
+            const newCo2 = parseFloat(latestData.co2) || 0;
+            const newLight = parseFloat(latestData.light) || 0;
+
+            // 更新当前值
+            this.currentTemp = newTemp;
+            this.currentHumi = newHumi;
+            this.currentCo2 = newCo2;
+            this.currentLight = newLight;
+
+            // 检查报警（传入新旧值对比）
+            this.checkAndSendAlarms();
+          }
+        }
+      }
+      httpRequest.destroy();
+    } catch (error) {
+      console.error('获取传感器数据失败:', error);
+    }
+  }
+
+  // 开始自动刷新（每10秒）
+  startAutoRefresh() {
+    this.refreshTimer = setInterval(() => {
+      this.fetchSensorData();
+    }, 10000);
+  }
+
+  // 检查并发送报警通知（只在状态变化时发送一次）
+  checkAndSendAlarms() {
+    // 检查温度
+    const isTempAlarm = this.currentTemp < this.tempMin || this.currentTemp > this.tempMax;
+    if (isTempAlarm !== this.tempAlarm) {
+      this.tempAlarm = isTempAlarm;
+      if (isTempAlarm && this.isChecked && !this.lastAlarmState.temp) {
+        // 发送温度报警通知
+        let alarmType = this.currentTemp < this.tempMin ? '过低' : '过高';
+        this.sendNotification(
+          '温度异常报警',
+          `当前温度: ${this.currentTemp}℃ (正常范围: ${this.tempMin}~${this.tempMax}℃)\n状态: 温度${alarmType}，请及时检查！`
+        );
+        this.lastAlarmState.temp = true;
+      } else if (!isTempAlarm) {
+        this.lastAlarmState.temp = false;
+      }
+    }
+
+    // 检查湿度
+    const isHumiAlarm = this.currentHumi < this.humiMin || this.currentHumi > this.humiMax;
+    if (isHumiAlarm !== this.humiAlarm) {
+      this.humiAlarm = isHumiAlarm;
+      if (isHumiAlarm && this.isChecked && !this.lastAlarmState.humi) {
+        let alarmType = this.currentHumi < this.humiMin ? '过低' : '过高';
+        this.sendNotification(
+          '湿度异常报警',
+          `当前湿度: ${this.currentHumi}% (正常范围: ${this.humiMin}~${this.humiMax}%)\n状态: 湿度${alarmType}，请及时检查！`
+        );
+        this.lastAlarmState.humi = true;
+      } else if (!isHumiAlarm) {
+        this.lastAlarmState.humi = false;
+      }
+    }
+
+    // 检查CO2
+    const isCo2Alarm = this.currentCo2 < this.co2Min || this.currentCo2 > this.co2Max;
+    if (isCo2Alarm !== this.co2Alarm) {
+      this.co2Alarm = isCo2Alarm;
+      if (isCo2Alarm && this.isChecked && !this.lastAlarmState.co2) {
+        let alarmType = this.currentCo2 < this.co2Min ? '过低' : '过高';
+        this.sendNotification(
+          'CO₂浓度异常报警',
+          `当前CO₂: ${this.currentCo2}ppm (正常范围: ${this.co2Min}~${this.co2Max}ppm)\n状态: CO₂浓度${alarmType}，请及时检查！`
+        );
+        this.lastAlarmState.co2 = true;
+      } else if (!isCo2Alarm) {
+        this.lastAlarmState.co2 = false;
+      }
+    }
+
+    // 检查光照
+    const isLightAlarm = this.currentLight < this.lightMin || this.currentLight > this.lightMax;
+    if (isLightAlarm !== this.lightAlarm) {
+      this.lightAlarm = isLightAlarm;
+      if (isLightAlarm && this.isChecked && !this.lastAlarmState.light) {
+        let alarmType = this.currentLight < this.lightMin ? '过低' : '过高';
+        this.sendNotification(
+          '光照异常报警',
+          `当前光照: ${this.currentLight}lx (正常范围: ${this.lightMin}~${this.lightMax}lx)\n状态: 光照${alarmType}，请及时检查！`
+        );
+        this.lastAlarmState.light = true;
+      } else if (!isLightAlarm) {
+        this.lastAlarmState.light = false;
+      }
+    }
   }
 
   // 清除所有 TextInput 焦点的统一方法
@@ -79,17 +448,49 @@ export struct Alarm {
     this.clearAllFocus();
   }
 
-  applyChanges() {
+  async applyChanges() {
+    // 验证输入有效性
+    if (this.tempMin >= this.tempMax) {
+      this.showToast('温度下限必须小于上限');
+      return;
+    }
+    if (this.humiMin >= this.humiMax) {
+      this.showToast('湿度下限必须小于上限');
+      return;
+    }
+    if (this.co2Min >= this.co2Max) {
+      this.showToast('CO2下限必须小于上限');
+      return;
+    }
+    if (this.lightMin >= this.lightMax) {
+      this.showToast('光照下限必须小于上限');
+      return;
+    }
+
+    // 保存配置
+    await this.saveThresholdConfig();
     console.log("温度：" + this.tempMin + "~" + this.tempMax);
     console.log("湿度：" + this.humiMin + "~" + this.humiMax);
     console.log("CO2：" + this.co2Min + "~" + this.co2Max);
     console.log("光照：" + this.lightMin + "~" + this.lightMax);
     console.log("开关：" + this.isChecked);
-    //增加数据库逻辑
+    // 显示成功提示
+    this.showToast('阈值设置已保存');
+
+    // 立即重新检查报警（重置报警状态）
+    this.lastAlarmState = { temp: false, humi: false, co2: false, light: false };
+    this.checkAndSendAlarms();
     // 应用后清除焦点
     this.clearAllFocus();
   }
-
+  // 获取当前实时值的显示文本和颜色
+  getCurrentValueDisplay(value: number, unit: string, min: number, max: number): AlarmColor {
+    const isAbnormal = value < min || value > max;
+    return {
+      text: `${value}${unit}`,
+      color: isAbnormal ? '#EF4444' : '#13EC5B'
+    };
+  }
   build() {
     NavDestination() {
       Column() {

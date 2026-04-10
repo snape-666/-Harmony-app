@@ -191,8 +191,8 @@ export struct Register {
         header: {
           'Content-Type': 'application/json'
         },
-        connectTimeout: 5000,
-        readTimeout: 5000
+        connectTimeout:500,
+        readTimeout:500
       });
 
       console.log('响应状态码:', response.responseCode);
@@ -239,8 +239,8 @@ export struct Register {
           'Content-Type': 'application/json'
         },
         extraData: JSON.stringify(requestBody),
-        connectTimeout:5000,
-        readTimeout: 5000
+        connectTimeout:500,
+        readTimeout: 500
       });
 
       console.log('注册响应码:', response.responseCode);
@@ -328,7 +328,7 @@ export struct Register {
         // 注册成功后跳转到登录页
         setTimeout(() => {
           NavigationManager.getInstance().pop();
-        }, 1500);
+        }, 1000);
       } else {
         console.log('注册失败:', result.message);
         this.registerError = result.message;
