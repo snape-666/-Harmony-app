@@ -9,7 +9,6 @@ import { DeviceRuntimeState, DeviceStateService } from '../common/DeviceStateSer
 // ==================== 接口定义 ====================
 // 硬件阈值响应接口
 interface HardwareThresholdsResponse {
-  status: string;
   Co2Threshold: number;
   SoilTempThreshold: number;
   SoilHumidityThreshold: number;
@@ -17,7 +16,14 @@ interface HardwareThresholdsResponse {
   WaterVolume: number;
   DeviceID: string;
 }
-
+// 阈值数据接口
+interface ThresholdData {
+  co2Threshold: number;
+  soilTempThreshold: number;
+  soilHumidityThreshold: number;
+  lightThreshold: number;
+  waterVolumeThreshold: number;
+}
 // 硬件光源设置响应接口
 interface HardwareLightResponse {
   Brightness: number;
@@ -71,14 +77,7 @@ interface DeviceInfo {
   ipAddress: string;
 }
 
-// 阈值数据接口（全局唯一，不再修改）
-interface ThresholdData {
-  co2Threshold: number;           // CO2浓度阈值
-  soilTempThreshold: number;      // 土壤温度阈值
-  soilHumidityThreshold: number;  // 土壤湿度阈值（低于此值补水）
-  lightThreshold: number;         // 光照阈值（低于此值补光）
-  waterVolumeThreshold: number;   // 水箱水量阈值（低于此值提示补水）
-}
+
 
 // 光源设置接口
 interface LightSetting {
@@ -147,9 +146,8 @@ class HardwareService {
     this.deviceIp = deviceIp;
     this.deviceId = deviceId;
   }
-
   /**
-   * 获取阈值数据
+   * 【新增】获取阈值数据
    */
   async fetchThresholds(): Promise<ThresholdData | null> {
     try {
@@ -164,7 +162,7 @@ class HardwareService {
       });
 
       if (response.responseCode === 200) {
-        const data = JSON.parse(response.result as string)as HardwareThresholdsResponse;
+        const data = JSON.parse(response.result as string) as HardwareThresholdsResponse;
         httpRequest.destroy();
         return {
           co2Threshold: data.Co2Threshold,
@@ -181,6 +179,7 @@ class HardwareService {
       return null;
     }
   }
+
 
   /**
    * 获取光源设置
@@ -329,8 +328,7 @@ interface GeneratedTypeLiteralInterface_1 {
 
 class CloudService {
   private static readonly CONFIG_API_URL = 'https://guet-farm.netlify.app/.netlify/functions/cfg';
-
-  //获取设备配置信息
+  // 获取设备配置信息（电量、水容量）
   async fetchDeviceConfig(deviceId: string): Promise<DeviceConfig | null> {
     try {
       const url = `${CloudService.CONFIG_API_URL}?deviceID=${deviceId}`;
@@ -344,7 +342,7 @@ class CloudService {
       });
 
       if (response.responseCode === 200) {
-        const data = JSON.parse(response.result as string)as DeviceConfigResponse;
+        const data = JSON.parse(response.result as string) as DeviceConfigResponse;
         httpRequest.destroy();
         return {
           electricity: data.electricity || '0%',
@@ -358,10 +356,8 @@ class CloudService {
       console.error('[云平台] 获取设备配置失败:', JSON.stringify(error));
       return null;
     }
-
-
-
   }
+ //获取土壤湿度和光照数据
   async fetchSoilAndLightData(): Promise<GeneratedTypeLiteralInterface_1 | null> {
     try {
       const url = 'https://guet-farm.netlify.app/.netlify/functions/getData';
@@ -386,9 +382,7 @@ class CloudService {
         httpRequest.destroy();
         return null;
       }
-      // 解析第一层JSON
-   //   const outerData = JSON.parse(response.result as string) as CloudDataResponse;
-     // httpRequest.destroy();
+
 
       // 解析第一层JSON
      let outerData: CloudDataResponse;
@@ -403,7 +397,7 @@ class CloudService {
       }
 
       // 检查outerData是否存在
-      if (!outerData) {
+      if (!outerData ||outerData.count === 0) {
         console.error('[云平台] outerData为null或undefined');
         httpRequest.destroy();
         return null;
@@ -535,6 +529,7 @@ export struct Equipment {
   // 定时器
   private sensorTimer: number = -1;      // 传感器数据定时器
   private autoControlTimer: number = -1; // 自动控制定时器
+  private waterMonitorInterval: number = -1;    // 水量监控定时器
 
   // 防抖定时器
   private saveTimeout: number = -1;
@@ -544,15 +539,10 @@ export struct Equipment {
   private isListening: boolean = false;
   // 计算实时颜色（总亮度 * RGB 色值）
   get currentColor():ResourceColor{
-    const factor = this.currentLED / 100;
-    if (!this.isLightOn) {
-      return 'rgb(255, 255, 255)';
-    }
-    const r = Math.round(this.r * factor);
-    const g = Math.round(this.g * factor);
-    const b = Math.round(this.b * factor);
-    return (`rgb(${r}, ${g}, ${b})`);
+    return `rgb(${this.r}, ${this.g}, ${this.b})`;
   }
+  // 灌溉开始时记录的水量
+  private irrigationStartWaterVolume: number = 0;
 
 
   // 添加 TextInput 的控制器
@@ -595,12 +585,6 @@ export struct Equipment {
       this.loadSensorData();
     }, 10000);
 
-    // 启动自动控制定时器：每5秒检查一次自动控制逻辑
-    this.autoControlTimer = setInterval(() => {
-      if (this.deviceState.autoModeState && this.isDeviceOn) {
-        this.autoControl();
-      }
-    }, 5000);
 
   }
   aboutToDisappear(): void {
@@ -618,7 +602,7 @@ export struct Equipment {
       const thresholds = await this.hardwareService.fetchThresholds();
       if (thresholds) {
         this.thresholds = thresholds;
-        console.log('阈值初始化成功:', this.thresholds);
+        console.log('从硬件获取阈值成功:', this.thresholds);
       } else {
         console.log('使用默认阈值:', this.thresholds);
       }
@@ -645,11 +629,6 @@ export struct Equipment {
   }
 
   /**
-   * 初始化光源设置
-   */
-
-
-  /**
    * 加载传感器数据（从后端获取）
    */
   async loadSensorData(): Promise<void> {
@@ -660,17 +639,15 @@ export struct Equipment {
         // 更新电量显示
         this.sensorData.electricity = this.cloudService.parseElectricity(config.electricity);
         this.electricityDisplay = config.electricity;
-
         // 更新水量显示
-        this.sensorData.waterVolume = this.cloudService.parseWaterVolume(config.waterVolume);
+        const newWaterVolume = this.cloudService.parseWaterVolume(config.waterVolume);
+        this.sensorData.waterVolume = newWaterVolume;
         this.waterVolumeDisplay = config.waterVolume;
 
         console.log(`传感器数据: 电量=${config.electricity}, 水量=${config.waterVolume}`);
 
-        // 检查水箱水量是否低于阈值
-        if (this.sensorData.waterVolume < this.thresholds.waterVolumeThreshold) {
-          this.showNotification('⚠️ 警告：水箱水量不足，请及时补水！');
-        }
+        console.log(`当前水容量=${newWaterVolume}L, 目标灌溉量=${this.currentPour}L`);
+
       }
 
       // 注意：土壤湿度和光照强度需要从其他接口获取
@@ -678,7 +655,13 @@ export struct Equipment {
       // 如果有获取土壤湿度和光照的接口，请在此处调用
       this.sensorData.soilHumidity = 65;  // 示例值
       this.sensorData.light = 600;        // 示例值
-
+      // 获取土壤湿度和光照数据
+      const soilAndLight = await this.cloudService.fetchSoilAndLightData();
+      if (soilAndLight) {
+        this.sensorData.soilHumidity = soilAndLight.soilHumidity;
+        this.sensorData.light = soilAndLight.light;
+        console.log(`土壤湿度=${soilAndLight.soilHumidity}%, 光照=${soilAndLight.light}lx`);
+      }
     } catch (error) {
       console.error('加载传感器数据失败:', error);
     }
@@ -791,14 +774,39 @@ export struct Equipment {
     this.syncStateToService();
   }
 
+  // ==================== 水泵控制逻辑 ====================
+
   /**
    * 手动控制浇水开关
+   * 开启前检查：目标灌溉量不能超过当前水容量
    */
   async toggleWater(isOn: boolean): Promise<void> {
     if (!this.isDeviceOn) {
       this.showToast('请先开启设备');
       this.isWaterOn = false;
       return;
+    }
+
+    // 开启水泵前的检查
+    if (isOn) {
+      if (this.currentPour <= 0) {
+        this.showToast('请先设置有效的目标灌溉量（大于0L）');
+        this.isWaterOn = false;
+        return;
+      }
+
+      if (this.currentPour > this.sensorData.waterVolume) {
+        this.showToast(`水量不足！当前水容量仅剩${this.sensorData.waterVolume}L，目标灌溉量${this.currentPour}L无法完成`);
+        this.isWaterOn = false;
+        return;
+      }
+
+      // 记录开始灌溉时的水量
+      this.irrigationStartWaterVolume = this.sensorData.waterVolume;
+      console.log(`[灌溉开始] 当前水容量=${this.sensorData.waterVolume}L，目标灌溉量=${this.currentPour}L`);
+
+      // 启动水量监控
+      this.startWaterMonitoring();
     }
 
     const cmd = isOn ? 'water' : 'water-off';
@@ -810,6 +818,62 @@ export struct Equipment {
     }
     this.syncStateToService();
   }
+
+  /**
+   * 启动水量监控（每秒检查一次）
+   * 当已用水量达到目标灌溉量时，自动关闭水泵
+   */
+  private startWaterMonitoring(): void {
+    if (this.waterMonitorInterval !== -1) {
+      clearInterval(this.waterMonitorInterval);
+    }
+
+    this.waterMonitorInterval = setInterval(async () => {
+      const config = await this.cloudService.fetchDeviceConfig(this.deviceId);
+      if (config && this.isWaterOn) {
+        const currentWater = this.cloudService.parseWaterVolume(config.waterVolume);
+        this.sensorData.waterVolume = currentWater;
+        this.waterVolumeDisplay = config.waterVolume;
+
+        const usedWater = this.irrigationStartWaterVolume - currentWater;
+        console.log(`[水量监控] 起始=${this.irrigationStartWaterVolume}L, 当前=${currentWater}L, 已用=${usedWater}L, 目标=${this.currentPour}L`);
+
+        if (usedWater >= this.currentPour) {
+          console.log(`✅ 已达到目标灌溉量${this.currentPour}L，自动关闭水泵`);
+          await this.forceStopWater();
+          if (this.waterMonitorInterval !== -1) {
+            clearInterval(this.waterMonitorInterval);
+            this.waterMonitorInterval = -1;
+          }
+        }
+      }
+    }, 1000);
+  }
+
+  /**
+   * 强制关闭水泵
+   */
+  private async forceStopWater(): Promise<void> {
+    if (this.isWaterOn || this.deviceState.waterState) {
+      const result = await this.hardwareService.sendCommand('water-off');
+      if (result) {
+        this.deviceState.waterState = result.waterState;
+        this.isWaterOn = result.waterState;
+        this.showToast('灌溉完成，水泵已自动关闭');
+      }
+    }
+  }
+
+  /**
+   * 目标灌溉量变化时的验证
+   */
+  onTargetIrrigationChange(value: number): void {
+    this.currentPour = value;
+    if (this.currentPour > this.sensorData.waterVolume && this.sensorData.waterVolume > 0) {
+      this.showNotification(`⚠️ 目标灌溉量${this.currentPour}L超过当前水容量${this.sensorData.waterVolume}L`);
+    }
+  }
+
 
   /**
    * 手动控制补光开关
@@ -831,6 +895,10 @@ export struct Equipment {
     }
     this.syncStateToService();
   }
+
+
+
+
 
   /**
    * 保存补光设置到硬件
@@ -860,37 +928,6 @@ export struct Equipment {
     this.syncStateToService();
   }
 
-  // ==================== 自动控制逻辑 ====================
-  /**
-   * 自动控制逻辑
-   * 根据传感器数据和阈值自动控制设备
-   */
-  async autoControl(): Promise<void> {
-    console.log('执行自动控制逻辑');
-
-    // 1. 土壤湿度控制：低于阈值开启浇水
-    if (this.sensorData.soilHumidity < this.thresholds.soilHumidityThreshold && !this.deviceState.waterState) {
-      console.log(`土壤湿度 ${this.sensorData.soilHumidity}% < 阈值 ${this.thresholds.soilHumidityThreshold}%，开启浇水`);
-      const result = await this.hardwareService.sendCommand('water');
-      if (result) {
-        this.deviceState.waterState = result.waterState;
-        this.isWaterOn = result.waterState;
-        this.showToast('土壤干燥，已自动开启浇水');
-      }
-    }
-
-    // 2. 光照控制：低于阈值开启补光
-    if (this.sensorData.light < this.thresholds.lightThreshold && !this.deviceState.lightState) {
-      console.log(`光照 ${this.sensorData.light}lx < 阈值 ${this.thresholds.lightThreshold}lx，开启补光`);
-      const result = await this.hardwareService.sendCommand('light');
-      if (result) {
-        this.deviceState.lightState = result.lightState;
-        this.isLightOn = result.lightState;
-        this.updateColor();
-        this.showToast('光照不足，已自动开启补光');
-      }
-    }
-  }
 
   // ==================== UI更新方法 ====================
 
@@ -937,7 +974,7 @@ export struct Equipment {
   // 添加一个方法来更新颜色
   updateColor() {
     this.currentColorValue = `rgb(${this.r}, ${this.g}, ${this.b})`;
-    console.log(`Color updated to: ${this.currentColorValue}`);
+    console.log(`颜色更新: ${this.currentColorValue}, 亮度=${this.currentLED}%`);
   }
   // 输入框校验 & 同步
   private syncRGBValue(input: string, setter: (val: number) => void, currentVal: number,inputSetter?: (val: string) => void): void {
@@ -1167,18 +1204,21 @@ export struct Equipment {
                   .blockBorderColor(Color.White)
                   .blockBorderWidth(3)
                   .borderRadius(16)
+                  .margin({ top: 10, bottom: 10 })
                   .onChange((value: number) => {
                     this.currentLED = value;
                     if (value > 0 && !this.isLightOn) {
                       this.isLightOn = true;
                     }
                     this.updateColor();
+                    if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
+                    this.saveTimeout = setTimeout(() => {
+                      this.saveLightSetting();
+                    }, 500);
                   })
-                  .onChange(() => {
-                    // 拖动结束后保存到硬件
-                    this.saveLightSetting();
-                  })
-                  .margin({ top: 10, bottom: 10 })
+
+
+
 
                 Row() {
                   Text('0%').fontColor('#94A3B8').fontSize('12vp').fontWeight(FontWeight.Bold)
@@ -1214,6 +1254,11 @@ export struct Equipment {
                     if (!isNaN(num) && num >= 0 && num <= 255) {
                       this.r = num;
                       this.updateColor();  // 添加这行
+                      // 防抖保存
+                      if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
+                      this.saveTimeout = setTimeout(() => {
+                        this.saveLightSetting();
+                      }, 500);
                     }
                     this.syncRGBValue(val, (v) => this.r = v, this.r);
                   })
@@ -1235,6 +1280,11 @@ export struct Equipment {
                     if (!isNaN(num) && num >= 0 && num <= 255) {
                       this.g = num;
                       this.updateColor();  // 添加这行
+                      // 防抖保存
+                      if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
+                      this.saveTimeout = setTimeout(() => {
+                        this.saveLightSetting();
+                      }, 500);
                     }
                     this.syncRGBValue(val, (v) => this.g = v, this.g);
                   })
@@ -1256,6 +1306,11 @@ export struct Equipment {
                     if (!isNaN(num) && num >= 0 && num <= 255) {
                       this.b = num;
                       this.updateColor();  // 添加这行
+                      // 防抖保存
+                      if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
+                      this.saveTimeout = setTimeout(() => {
+                        this.saveLightSetting();
+                      }, 500);
                     }
                     this.syncRGBValue(val, (v) => this.b = v, this.b);
                   })
@@ -1362,7 +1417,7 @@ export struct Equipment {
 
               Row({space:10}) {
                 this.endCard('app.media.xinhao','信号','强(85%)')
-                this.endCard('app.media.battery','电量','95%')
+                this.endCard('app.media.battery', '电量', this.electricityDisplay)
 
               }
 
@@ -1571,6 +1626,7 @@ export struct Equipment {
         .border({ width: 1, color: '#d1d5db' })
         .fontSize(18)
         .textAlign(TextAlign.Center)
+        .type(InputType.Number)
         .onChange((val: string) => {
           console.log(`${label} input change: ${val}`);
           onInputChange(val);  // 触发输入变化
