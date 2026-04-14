@@ -4,6 +4,7 @@ import {AllHistory} from './AllHistory'
 @Entry
 @Component
 export struct Lrrigate {
+  @State progress: number=70;
   @State params:Record<string,Object>={};
   @State isOn: boolean = false;
   build() {
@@ -84,6 +85,25 @@ export struct Lrrigate {
                Text('进展').fontColor('#64748B').fontWeight(FontWeight.Bold)
                Text('1.6L/2.5L').fontWeight(FontWeight.Bold)
              }.width('100%').justifyContent(FlexAlign.SpaceBetween).padding(15)
+
+           // 进度条容器
+           Stack() {
+             // 灰色底
+             Row().width('100%').height(10).backgroundColor('#E5E7EB').borderRadius(5)
+
+             // 绿色进度
+             Row()
+               .width(`${this.progress}%`)
+               .height(10)
+               .backgroundColor('#22C55E')
+               .borderRadius(5)
+           }
+           .alignContent(Alignment.TopStart)
+           .width('90%')
+
+           Text('预计还剩4分钟完成').fontColor('#22C55E').fontSize('12vp')
+             .width('100%')
+             .padding({left:20,top:15})
          }
          .width('95%')
          .height('100vp')
@@ -107,7 +127,16 @@ export struct Lrrigate {
            .padding({top:15,left:15,right:15})
 
            Column(){
-
+             Image($r('app.media.Lrrigateco2')).width('90%').margin({top:15,bottom:10})
+             Row(){
+               Text('00:00').fontSize('12vp').fontColor('#94A3B8')
+               Text('08:00').fontSize('12vp').fontColor('#94A3B8')
+               Text('12:00').fontSize('12vp').fontColor('#94A3B8')
+               Text('16:00').fontSize('12vp').fontColor('#94A3B8')
+               Text('22:00').fontSize('12vp').fontColor('#94A3B8')
+             }
+             .width('100%')
+             .justifyContent(FlexAlign.SpaceAround)
            }
            .width('95%')
            .height('140vp')

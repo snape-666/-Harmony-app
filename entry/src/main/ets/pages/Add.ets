@@ -64,7 +64,7 @@ export struct Add {
             .borderRadius(20)
             .margin({top:15})
             .onClick(()=>{
-
+              NavigationManager.getInstance().push('Rule',{from:Add})
             })
 
 
@@ -134,7 +134,7 @@ export struct Add {
 
       Column(){
         Text('新设备-1').fontWeight(FontWeight.Bold)
-        Text('型号:New Device-T1').fontColor('#595C5C')
+        Text('ID:device_001').fontColor('#595C5C')
       }
       .width('100%')
       .alignItems(HorizontalAlign.Start)
@@ -146,6 +146,9 @@ export struct Add {
       }
       .width('35%')
       .justifyContent(FlexAlign.Center)
+      .onClick(()=>{
+        console.log('连接');
+      })
 
     }
     .width('90%')

@@ -1,293 +1,209 @@
-import { NavigationManager } from '../common/NavigationManager';
-import { camera } from '@kit.CameraKit';
+// entry/src/main/ets/pages/AIAssistantPage.ets
+import  PlantIdService, { DiagnosisResult } from '../service/PlantIdService';
+import { ImageUtils } from '../common/ImageUtils';
+import { promptAction } from '@kit.ArkUI';
+import camera from '@ohos.multimedia.camera';
+import photoAccessHelper from '@ohos.file.photoAccessHelper';
 import { image } from '@kit.ImageKit';
-import { BusinessError } from '@kit.BasicServicesKit';
+import { NavigationManager } from '../common/NavigationManager';
 
 @Entry
 @Component
 export struct AIidentify {
-  @State params: Record<string, Object> = {};
-  private cameraManager: camera.CameraManager = camera.getCameraManager(getContext(this));
-  @State previewSurfaceId: string = '';
-  private cameraInput: camera.CameraInput | null = null;
-  private previewOutput: camera.PreviewOutput | null = null;
-  private photoOutput: camera.PhotoOutput | null = null;
-  private session: camera.PhotoSession | null = null;
-  @State showPreview: boolean = true;
-  @State capturedImage: PixelMap | null = null;
-  @State showResult: boolean = false;
-  private mXComponentController: XComponentController = new XComponentController();
-  private currentCameraDevice: camera.CameraDevice | null = null; // 新增：保存当前相机设备
-  aboutToAppear() {
-    // 初始化相机
-    this.initCamera();
-  }
+  @State params:Record<string,Object>={};
+  @State selectedImage: PixelMap | null = null;
+  @State isAnalyzing: boolean = false;
+  @State analysisResult: string = '';
+  @State diseaseName: string = '';
+  @State treatmentAdvice: string = '';
 
-  async initCamera() {
+  // 选择图片
+  async selectImage() {
     try {
-      // 1. 创建拍照会话
-      this.session = this.cameraManager.createSession(camera.SceneMode.NORMAL_PHOTO) as camera.PhotoSession;
-
-      // 2. 获取后置摄像头
-      const cameras = this.cameraManager.getSupportedCameras();
-      const backCamera = cameras.find((cam: camera.CameraDevice) =>
-      cam.cameraPosition === camera.CameraPosition.CAMERA_POSITION_BACK
-      );
-
-      if (!backCamera) {
-        console.error('未找到后置摄像头');
-        return;
-      }
-      // 保存 CameraDevice 对象，后续直接用
-      this.currentCameraDevice = backCamera;
-      // 3. 创建相机输入
-      this.cameraInput = this.cameraManager.createCameraInput(backCamera);
-      await this.cameraInput.open();
-
-      // 4. 创建预览输出
-      this.previewOutput = this.cameraManager.createPreviewOutput(this.previewSurfaceId);
-
-      // 5. 获取设备能力并创建拍照输出（新API）
-      const outputCapability = this.cameraManager.getSupportedOutputCapability(
-        backCamera,  //直接用你前面获取到的同一个设备对象
-        camera.SceneMode.NORMAL_PHOTO
-      );
-
-      const photoProfiles = outputCapability.photoProfiles;
-      if (photoProfiles && photoProfiles.length > 0) {
-        this.photoOutput = this.cameraManager.createPhotoOutput(photoProfiles[0]);
-
-        // 注册拍照回调
-        this.photoOutput.on('photoAvailable', (err: BusinessError, photo: camera.Photo) => {
-          if (err) {
-            console.error('照片生成失败:', err);
-            return;
-          }
-          this.handlePhotoData(photo);
-        });
-      }
-
-      // 6. 配置会话
-      if (this.cameraInput && this.previewOutput && this.photoOutput) {
-        this.session.addInput(this.cameraInput);
-        this.session.addOutput(this.previewOutput);
-        this.session.addOutput(this.photoOutput);
-
-        // 7. 提交配置
-        await this.session.commitConfig();
-        await this.session.start();
-      }
-
-    } catch (error) {
-      console.error('相机初始化失败:', error);
-    }
-  }
-
-  // 处理拍照数据
-  async handlePhotoData(photo: camera.Photo) {
-    try {
-      const imageObj = photo.main;
-      const component = await imageObj.getComponent(image.ComponentType.JPEG);
-
-      if (component.byteBuffer) {
-        const pixelMap = await image.createPixelMap(component.byteBuffer, {
-          size: imageObj.size,
-          pixelFormat: image.PixelMapFormat.RGBA_8888
-        });
-
-        this.capturedImage = pixelMap;
-        this.showPreview = false;
-        this.showResult = true;
-        await this.session?.stop();
-      }
-
-      imageObj.release();
-    } catch (error) {
-      console.error('处理照片数据失败:', error);
-    }
-  }
-
-  // 拍照
-  async takePhoto() {
-    if (!this.photoOutput) return;
-
-    try {
-      const photoSettings: camera.PhotoCaptureSetting = {
-        quality: camera.QualityLevel.QUALITY_LEVEL_HIGH,
-        rotation: camera.ImageRotation.ROTATION_0,
-        mirror: false
-      };
-
-      await this.photoOutput.capture(photoSettings);
-    } catch (error) {
-      console.error('拍照失败:', error);
-    }
-  }
-
-  // 切换前后摄像头
-  async switchCamera() {
-    // 可以后续实现
-    console.info('切换摄像头功能待实现');
-  }
-
-  // 返回重拍
-  async retakePhoto() {
-    this.capturedImage = null;
-    this.showPreview = true;
-    this.showResult = false;
-    await this.session?.start();
-  }
-
-  // 跳转到识图结果页
-  goToRecognition() {
-    if (this.capturedImage) {
-      NavigationManager.getInstance().push('AIResult', {
-        from: 'AIidentify',
-        imageData: this.capturedImage
+      const photoPicker = new photoAccessHelper.PhotoViewPicker();
+      const pickerResult = await photoPicker.select({
+        MIMEType: photoAccessHelper.PhotoViewMIMETypes.IMAGE_TYPE
       });
+
+      if (pickerResult.photoUris.length > 0) {
+        const uri = pickerResult.photoUris[0];
+        const imageSource = image.createImageSource(uri);
+        const pixelMap = await imageSource.createPixelMap();
+
+        // 压缩图片
+        const compressed = await ImageUtils.compressImage(pixelMap);
+        this.selectedImage = compressed;
+        this.isAnalyzing = true;
+
+
+        // 开始分析
+        await this.analyzeWithPlantId(compressed);
+      }
+    } catch (error) {
+      console.error('选择图片失败:', error);
     }
   }
 
-  // 返回上一页
-  goBack() {
-    NavigationManager.getInstance().pop();
+  // 调用Plant.id分析
+  async analyzeWithPlantId(pixelMap: image.PixelMap) {
+    console.info('收到的 PixelMap:', pixelMap);
+    this.isAnalyzing = true;
+    console.info('isAnalyzing 设置为 true');
+    try {
+      // 转换图片为Base64
+      const base64 = await ImageUtils.pixelMapToBase64(pixelMap);
+
+      // 调用Plant.id API
+      const result = await PlantIdService.analyzeHealth(base64);
+
+      if (result) {
+        this.parseResult(result);
+      } else {
+        this.analysisResult = '识别失败，请重试';
+      }
+    } catch (error) {
+      console.error('分析异常:', error);
+      this.analysisResult = '网络错误，请检查网络连接';
+    } finally {
+      this.isAnalyzing = false;
+    }
+  }
+
+  // 解析API返回结果
+  private parseResult(result:DiagnosisResult) {
+      if (result.isHealthy){
+        this.diseaseName = '健康作物';
+        this.treatmentAdvice = '您的作物看起来健康状况良好，继续保持当前管理方式。';
+        this.analysisResult = '✅ 作物健康状态良好，未检测到明显病虫害。';
+      } else {
+        this.diseaseName = result.diseaseName;
+        this.treatmentAdvice = `【病害描述】${result.diseaseDescription}\n\n【治疗方案】${result.treatmentAdvice}\n\n【发病原因】${result.cause}`;
+        this.analysisResult = `⚠️ 检测到：${this.diseaseName}（置信度：${(result.confidence * 100).toFixed(1)}%）`;
+      }
+
+
+    // 如果有植物识别结果
+    if (result.plantName && result.plantName !== '未知') {
+      console.log(`识别植物: ${result.plantName}`);
+    }
   }
 
   build() {
-    NavDestination() {
-     Column(){
+   NavDestination(){
+     Column() {
+       Row() {
+         Image($r('app.media.back'))
+           .backgroundColor('#E2E8F0')
+           .width('40vp')
+           .height('40vp')
+           .borderRadius(20)
+           .padding(12)
+           .onClick(() => {
+             NavigationManager.getInstance().pop()
+           })
+         Text('AI识图').fontSize('25vp').fontWeight(FontWeight.Bold)
+         Text('')
+           .width('40vp')
+           .height('40vp')
+       }.width('100%').justifyContent(FlexAlign.SpaceBetween).padding({ left: 15, right: 15 })
+
+       Column(){
+       // 图片预览区域
        Stack() {
-         if (this.showPreview) {
-           // 相机预览界面
+         if (this.selectedImage) {
+           Image(this.selectedImage)
+             .width('100%')
+             .height(280)
+             .objectFit(ImageFit.Contain)
+         } else {
            Column() {
-             // 预览区域
-             XComponent({
-               type: XComponentType.SURFACE,
-               controller: this.mXComponentController
-             })
-               .width('100%')
-               .height('100%')
-               .onLoad(() => {
-                 this.previewSurfaceId = 'cameraPreview';
-               })
+             Image($r('sys.media.ohos_ic_public_camera'))
+               .width(60)
+               .height(60)
+               .fillColor('#94a3b8')
+             Text('从相册选择图片进行预览')
+               .fontSize(14)
+               .fontColor('#94a3b8')
            }
            .width('100%')
-           .height('100%')
-
-           // 顶部控制栏
-           Column() {
-             Row() {
-               // 返回按钮
-               Button() {
-                 Image($r('app.media.back'))
-                   .width(24)
-                   .height(24)
-                   .fillColor(Color.White)
-               }
-               .width(40)
-               .height(40)
-               .backgroundColor('#66000000')
-               .borderRadius(20)
-               .onClick(() => this.goBack())
-
-               Blank()
-
-               // 切换摄像头按钮
-               Button() {
-                 Image($r('app.media.new'))
-                   .width(24)
-                   .height(24)
-                   .fillColor(Color.White)
-               }
-               .width(40)
-               .height(40)
-               .backgroundColor('#66000000')
-               .borderRadius(20)
-               .onClick(() => this.switchCamera())
-             }
-             .width('100%')
-             .padding({ left: 20, right: 20, top: 40 })
-
-             Blank()
-
-             // 底部控制栏
-             Row() {
-               Blank()
-
-               // 拍照按钮
-               Button() {
-                 Circle()
-                   .width(70)
-                   .height(70)
-                   .fill(Color.White)
-                   .stroke(Color.Gray)
-                   .strokeWidth(3)
-               }
-               .width(80)
-               .height(80)
-               .backgroundColor(Color.Transparent)
-               .onClick(() => this.takePhoto())
-
-               Blank()
-             }
-             .width('100%')
-             .padding({ bottom: 40 })
-           }
-           .width('100%')
-           .height('100%')
-
-         } else if (this.showResult && this.capturedImage) {
-           // 拍照预览界面
-           Column() {
-             // 图片预览
-             Image(this.capturedImage)
-               .width('100%')
-               .layoutWeight(1)
-               .objectFit(ImageFit.Contain)
-               .backgroundColor(Color.Black)
-
-             // 底部操作栏
-             Row() {
-               Button('重拍')
-                 .width('45%')
-                 .height(50)
-                 .fontSize(18)
-                 .backgroundColor('#FFE0E0E0')
-                 .onClick(() => this.retakePhoto())
-
-               Button('使用照片')
-                 .width('45%')
-                 .height(50)
-                 .fontSize(18)
-                 .backgroundColor('#FF007AFF')
-                 .fontColor(Color.White)
-                 .onClick(() => this.goToRecognition())
-             }
-             .width('100%')
-             .padding(20)
-             .justifyContent(FlexAlign.SpaceEvenly)
-             .backgroundColor(Color.White)
-           }
-           .width('100%')
-           .height('100%')
-           .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+           .height(280)
+           .justifyContent(FlexAlign.Center)
+           .alignItems(HorizontalAlign.Center)
+           .backgroundColor(Color.White)
+          // .backgroundColor('#f1f5f9')
          }
 
+         if (this.isAnalyzing) {
+           Column() {
+             LoadingProgress()
+               .width(48)
+               .height(48)
+               .color('#13EC5B')
+             Text('AI正在分析中...')
+               .fontSize(14)
+               .fontColor('#ffffff')
+           }
+           .width('100%')
+           .height('100%')
+           .backgroundColor('rgba(0,0,0,0.6)')
+         }
+       }
+       .borderRadius(16)
+
+       // 操作按钮
+       Row({ space: 16 }) {
+         Button('选择图片')
+           .height(44)
+           .layoutWeight(1)
+           .backgroundColor('#3b82f6')
+           .onClick(() => {
+             this.selectImage();
+             console.log('当前 isAnalyzing 状态:', this.isAnalyzing);
+           })
        }
        .width('100%')
-       .height('100%')
+       .padding({ top: 16 })
+
+       // 分析结果
+       if (this.analysisResult) {
+         Column() {
+           Text('🔬 AI诊断结果')
+             .fontSize(18)
+             .fontWeight(FontWeight.Bold)
+
+           Text(this.analysisResult)
+             .fontSize(16)
+             .fontColor(this.diseaseName === '健康作物' ? '#13EC5B' : '#ef4444')
+             .margin({ top: 8 })
+
+           if (this.treatmentAdvice) {
+             Text('🛠️ 处理建议')
+               .fontSize(16)
+               .fontWeight(FontWeight.Medium)
+               .margin({ top: 16 })
+
+             Text(this.treatmentAdvice)
+               .fontSize(14)
+               .fontColor('#475569')
+               .lineHeight(20)
+               .margin({ top: 8 })
+           }
+         }
+         .width('100%')
+         .padding(16)
+         .backgroundColor('#ffffff')
+         .borderRadius(16)
+         .margin({ top: 16 })
+       }
+
+
+     } .width('100%')
+       .layoutWeight(1)
+       .padding(16)
+       .backgroundColor('#f8fafc')
        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
      }
-    }
-    .hideTitleBar(true)
-    .width('100%')
-    .height('100%')
-  }
 
-  aboutToDisappear() {
-    // 释放相机资源
-    this.session?.stop();
-    this.session?.release();
-    this.cameraInput?.close();
+   }.hideTitleBar(true)
   }
 }

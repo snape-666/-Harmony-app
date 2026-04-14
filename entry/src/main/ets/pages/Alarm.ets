@@ -6,6 +6,8 @@ import { notificationManager } from '@kit.NotificationKit';
 import { http } from '@kit.NetworkKit';
 import { common } from '@kit.AbilityKit';
 import { vibrator } from '@kit.SensorServiceKit';
+import { AlarmManager } from '../common/AlarmManager';
+
 // 阈值配置类（使用class而不是interface）
 export class ThresholdConfig {
   tempMin: number = 18;
@@ -68,7 +70,7 @@ interface AlarmColor {
 @Entry
 @Component
 export struct Alarm {
-
+  @State username: string = '';
   @State params: Record<string, Object> = {};
   @State isChecked: boolean = false;
 
@@ -130,12 +132,23 @@ export struct Alarm {
   private refreshTimer?: number;
   aboutToAppear(): void {
     console.log('接收的参数', JSON.stringify(this.params));
+    this.username = this.params['username'] as string || '';
+    console.log('Alarm接收到的用户名:', this.username);
+
     this.initPreferences();
     this.loadThresholdConfig();
     this.fetchSensorData();
     this.startAutoRefresh();
     // 请求通知权限
     this.requestNotificationPermission();
+
+    // 初始化 AlarmManager（传入用户名）
+    if (this.username) {
+      const context = this.getUIContext().getHostContext();
+      if (context) {
+        AlarmManager.getInstance().init(context,this.username);
+      }
+    }
   }
 
   aboutToDisappear(): void {
@@ -200,24 +213,40 @@ export struct Alarm {
       return;
     }
 
-    try {
-      // 创建通知请求
-      const notificationRequest: notificationManager.NotificationRequest = {
-        id: Date.now(), // 唯一ID
-        content: {
-          contentType: 0,  // 0 = NOTIFICATION_CONTENT_BASIC_TEXT
-          normal: {
-            title: title,
-            text: content
-          }
-        },
-        deliveryTime: Date.now(),
-        showDeliveryTime: true
-      };
 
-      // 发布通知
-      await notificationManager.publish(notificationRequest);
-      console.log('通知发送成功:', title);
+   try {
+
+     // 模拟器上用弹窗，真机用通知
+     const isSimulator = true; // 模拟器调试时设为 true，真机发布时改为 false
+
+     if (isSimulator) {
+       // 弹窗方式
+       AlertDialog.show({
+         title: title,
+         message: content,
+         confirm: {
+           value: '知道了',
+           action: () => {}
+         }
+       });
+       console.log('弹窗显示成功:', title);
+     } else {
+       // 通知方式
+       const notificationRequest: notificationManager.NotificationRequest = {
+         id: Date.now(),
+         content: {
+           contentType: 0,
+           normal: {
+             title: title,
+             text: content
+           }
+         },
+         deliveryTime: Date.now(),
+         showDeliveryTime: true
+       };
+       await notificationManager.publish(notificationRequest);
+       console.log('通知发送成功:', title);
+     }
 
       // 播放默认通知音（系统会自动播放，不需要额外代码）
       // 震动也是系统自动处理，slotType 设置为 CONTENT_INFORMATION 会触发震动
@@ -257,6 +286,7 @@ export struct Alarm {
     try {
       if (!this.dataPreferences) return;
       const configStr = await this.dataPreferences.get(this.THRESHOLD_KEY, '');
+      console.log('读取到的配置字符串:', configStr);
       if (configStr && configStr !== '') {
         const arr= JSON.parse(configStr as string);
         if (Array.isArray(arr) && arr.length >= 9) {
@@ -303,6 +333,7 @@ export struct Alarm {
   // 获取传感器数据
   async fetchSensorData() {
     try {
+      console.log('开始获取传感器数据...');
       const httpRequest: http.HttpRequest = http.createHttp();
       const response = await httpRequest.request(this.API_URL, {
         method: http.RequestMethod.GET,
@@ -312,7 +343,9 @@ export struct Alarm {
       });
 
       if (response.responseCode === 200) {
+        console.log('获取数据成功，状态码:', response.responseCode);
         const outerResult = JSON.parse(response.result as string) as ApiResponse;
+        console.log('解析结果:', JSON.stringify(outerResult));
         if (outerResult.success && outerResult.data) {
           const dataPoints = Object.values(outerResult.data);
           const latestData = dataPoints[dataPoints.length - 1];
@@ -322,7 +355,8 @@ export struct Alarm {
             const newHumi = parseFloat(latestData.air_humidity) || 0;
             const newCo2 = parseFloat(latestData.co2) || 0;
             const newLight = parseFloat(latestData.light) || 0;
-
+            console.log(`实时数据 - 温度:${newTemp}℃, 湿度:${newHumi}%, CO2:${newCo2}ppm, 光照:${newLight}lx`);
+            console.log(`阈值 - 温度:${this.tempMin}~${this.tempMax}℃`);
             // 更新当前值
             this.currentTemp = newTemp;
             this.currentHumi = newHumi;
@@ -342,7 +376,11 @@ export struct Alarm {
 
   // 开始自动刷新（每10秒）
   startAutoRefresh() {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
+    }
     this.refreshTimer = setInterval(() => {
+      console.log('定时刷新传感器数据...');
       this.fetchSensorData();
     }, 10000);
   }
@@ -351,6 +389,7 @@ export struct Alarm {
   checkAndSendAlarms() {
     // 检查温度
     const isTempAlarm = this.currentTemp < this.tempMin || this.currentTemp > this.tempMax;
+    console.log(`温度是否报警: ${isTempAlarm}, 当前报警状态: ${this.tempAlarm}`);
     if (isTempAlarm !== this.tempAlarm) {
       this.tempAlarm = isTempAlarm;
       if (isTempAlarm && this.isChecked && !this.lastAlarmState.temp) {
@@ -368,6 +407,7 @@ export struct Alarm {
 
     // 检查湿度
     const isHumiAlarm = this.currentHumi < this.humiMin || this.currentHumi > this.humiMax;
+    console.log(`湿度是否报警: ${isHumiAlarm}, 当前报警状态: ${this.humiAlarm}`);
     if (isHumiAlarm !== this.humiAlarm) {
       this.humiAlarm = isHumiAlarm;
       if (isHumiAlarm && this.isChecked && !this.lastAlarmState.humi) {
@@ -384,6 +424,7 @@ export struct Alarm {
 
     // 检查CO2
     const isCo2Alarm = this.currentCo2 < this.co2Min || this.currentCo2 > this.co2Max;
+    console.log(`co2是否报警: ${isCo2Alarm}, 当前报警状态: ${this.co2Alarm}`);
     if (isCo2Alarm !== this.co2Alarm) {
       this.co2Alarm = isCo2Alarm;
       if (isCo2Alarm && this.isChecked && !this.lastAlarmState.co2) {
@@ -400,6 +441,8 @@ export struct Alarm {
 
     // 检查光照
     const isLightAlarm = this.currentLight < this.lightMin || this.currentLight > this.lightMax;
+    console.log(`光照是否报警: ${isLightAlarm}, 当前报警状态: ${this.lightAlarm}`);
+    console.log(`光照检查 - 当前:${this.currentLight}, 阈值:${this.lightMin}~${this.lightMax}, 是否报警:${isLightAlarm}`);
     if (isLightAlarm !== this.lightAlarm) {
       this.lightAlarm = isLightAlarm;
       if (isLightAlarm && this.isChecked && !this.lastAlarmState.light) {
@@ -480,6 +523,15 @@ export struct Alarm {
     // 立即重新检查报警（重置报警状态）
     this.lastAlarmState = { temp: false, humi: false, co2: false, light: false };
     this.checkAndSendAlarms();
+    const alarmManager = AlarmManager.getInstance();
+    alarmManager.updateConfig([
+      this.tempMin, this.tempMax,
+      this.humiMin, this.humiMax,
+      this.co2Min, this.co2Max,
+      this.lightMin, this.lightMax,
+      this.isChecked ? 1 : 0
+    ]);
+    this.showToast('阈值设置已保存');
     // 应用后清除焦点
     this.clearAllFocus();
   }
@@ -589,10 +641,10 @@ export struct Alarm {
 
                 Blank()
 
-                Text('24℃')
+                Text(this.getCurrentValueDisplay(this.currentTemp, '℃', this.tempMin, this.tempMax).text)
                   .fontWeight(FontWeight.Bold)
                   .fontSize('20vp')
-                  .fontColor('#13EC5B')
+                  .fontColor(this.getCurrentValueDisplay(this.currentTemp, '℃', this.tempMin, this.tempMax).color)
                   .margin({ right: 20, top: 20 })
               }
               .justifyContent(FlexAlign.Start)
@@ -752,10 +804,10 @@ export struct Alarm {
 
                 Blank()
 
-                Text('65%')
+                Text(this.getCurrentValueDisplay(this.currentHumi, '%', this.humiMin, this.humiMax).text)
                   .fontWeight(FontWeight.Bold)
                   .fontSize('20vp')
-                  .fontColor('#13EC5B')
+                  .fontColor(this.getCurrentValueDisplay(this.currentHumi, '%', this.humiMin, this.humiMax).color)
                   .margin({ right: 20, top: 20 })
               }
               .justifyContent(FlexAlign.Start)
@@ -915,10 +967,10 @@ export struct Alarm {
 
                 Blank()
 
-                Text('412')
+                Text(this.getCurrentValueDisplay(this.currentCo2, 'ppm', this.co2Min, this.co2Max).text)
                   .fontWeight(FontWeight.Bold)
                   .fontSize('20vp')
-                  .fontColor('#13EC5B')
+                  .fontColor(this.getCurrentValueDisplay(this.currentCo2, 'ppm', this.co2Min, this.co2Max).color)
                   .margin({ right: 20, top: 20 })
               }
               .justifyContent(FlexAlign.Start)
@@ -1078,10 +1130,11 @@ export struct Alarm {
 
                 Blank()
 
-                Text('12k')
+
+                Text(this.getCurrentValueDisplay(this.currentLight, 'lx', this.lightMin, this.lightMax).text)
                   .fontWeight(FontWeight.Bold)
                   .fontSize('20vp')
-                  .fontColor('#13EC5B')
+                  .fontColor(this.getCurrentValueDisplay(this.currentLight, 'lx', this.lightMin, this.lightMax).color)
                   .margin({ right: 20, top: 20 })
               }
               .justifyContent(FlexAlign.Start)

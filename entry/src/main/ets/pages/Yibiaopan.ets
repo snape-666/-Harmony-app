@@ -1,10 +1,13 @@
 import { sendableColorSpaceManager } from '@kit.ArkGraphics2D'
 import { StartOptions } from '@kit.AbilityKit'
 import {Equipment} from './Equipment'
+import {Monitor} from './Monitor'
 import {NavigationManager} from '../common/NavigationManager'
 import { JSON } from '@kit.ArkTS'
 import {AIidentify} from './AIidentify'
 import { http } from '@kit.NetworkKit'
+import { webview } from '@kit.ArkWeb'
+import { MultiNavigation, promptAction } from '@kit.ArkUI'
 
 // 定义传感器数据类型
 interface SensorData {
@@ -53,7 +56,8 @@ export struct Yibiaopan {
   @State loginUsername: string = '';
   // 历史数据列表（用于显示最新数据）
   @State sensorDataList: SensorData[] = [];
-
+  // 在组件中添加状态变量
+  @State isDeviceRunning: boolean = true;  // 设备运行状态
   private readonly API_URL: string = 'https://guet-farm.netlify.app/.netlify/functions/getData';
   private refreshTimer?: number;
   @State cardList: CardData[] = [
@@ -64,6 +68,27 @@ export struct Yibiaopan {
   ];
   private static hasShownToast: boolean = false;
   @State isFirstLoad: boolean = !Yibiaopan.hasShownToast;
+//监控
+  @State showVideo: boolean = false;
+  @State isConnected: boolean = false;
+
+  private webController: webview.WebviewController = new webview.WebviewController();
+  // 固定硬件地址
+  private readonly VIDEO_URL: string = 'http://172.16.12.51/video';
+  // 打开监控
+  openMonitor() {
+    this.showVideo = true;
+    this.isConnected = true;
+    console.log('打开监控:', this.VIDEO_URL);
+    NavigationManager.getInstance().push('Monitor',{from:Yibiaopan})
+  }
+
+  // 关闭监控
+  closeMonitor() {
+    this.showVideo = false;
+    this.isConnected = false;
+    this.webController = new webview.WebviewController();
+  }
 
 
   aboutToAppear(): void {
@@ -73,6 +98,11 @@ export struct Yibiaopan {
     this.fetchSensorData();
     // 每30秒自动刷新数据
     this.startAutoRefresh();
+    // 从全局获取设备状态
+    if (typeof globalThis !== 'undefined' && globalThis.deviceStatus) {
+      this.isDeviceRunning = globalThis.deviceStatus.isRunning;
+    }
+
   }
   aboutToDisappear(): void {
     // 清除定时器
@@ -262,7 +292,7 @@ export struct Yibiaopan {
             }
             .onClick(() => {
               console.log('跳转到阈值警报');
-              NavigationManager.getInstance().push('Alarm', { from: Yibiaopan })
+              NavigationManager.getInstance().push('Alarm', { from: Yibiaopan,username:this.loginUsername })
             })
 
           }
@@ -277,10 +307,10 @@ export struct Yibiaopan {
                   Text()
                     .width('12vp')
                     .height('12vp')
-                    .backgroundColor('#13EC5B')
+                    .backgroundColor(this.isDeviceRunning ? '#13EC5B' : '#FF4444')
                     .borderRadius(6)
-                  Text('运行状态')
-                    .fontColor('#13EC5B')
+                  Text(this.isDeviceRunning ? '运行状态' : '已停止')
+                    .fontColor(this.isDeviceRunning ? '#13EC5B' : '#FF4444')
                     .fontSize('15vp')
                 }
                 .alignSelf(ItemAlign.Start)
@@ -294,7 +324,7 @@ export struct Yibiaopan {
                 Row() {
                   Text() {
                     Span('系统状态:').fontWeight(FontWeight.Bold).fontSize('25vp')
-                    Span(` ${this.systemStatus}`).fontWeight(FontWeight.Bold).fontSize('25vp').fontColor('#13EC5B')
+                    Span(` ${this.systemStatus}`).fontWeight(FontWeight.Bold).fontSize('25vp').fontColor(this.systemStatus=='最佳'?'#13EC5B':'#EBA64C')
                   }
                 }
                 .alignSelf(ItemAlign.Start)
@@ -385,6 +415,7 @@ export struct Yibiaopan {
                           Text(item.value)
                             .fontSize('20vp')
                             .fontWeight(FontWeight.Bold)
+
                         }
                         .alignItems(HorizontalAlign.Start)
                         .margin({ top: 15 })
@@ -401,6 +432,7 @@ export struct Yibiaopan {
                             .fontWeight(FontWeight.Bold)
                         }
                         .margin({ top: 15 })
+                        .width('30%')
                       }
 
                     }
@@ -465,6 +497,11 @@ export struct Yibiaopan {
                       color: '#E2E8F0',
                       width: 1
                     })
+                    .onClick(()=>{
+                      console.log('跳转到监控');
+                      this.openMonitor();
+
+                    })
                 }
                 .width('345vp')
                 .height('180vp')
@@ -483,6 +520,8 @@ export struct Yibiaopan {
                 .margin({
                   top:20
                 })
+
+
               }
 
               Column() {

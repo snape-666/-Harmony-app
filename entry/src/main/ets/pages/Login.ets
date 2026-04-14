@@ -4,6 +4,7 @@ import {Yibiaopan}from './Yibiaopan'
 import {LostPassword} from './LostPassword'
 import { preferences } from "@kit.ArkData";
 import { http } from "@kit.NetworkKit";
+import { AlarmManager } from "../common/AlarmManager";
 
 // 定义登录响应接口
 interface LoginResponse {
@@ -183,7 +184,13 @@ interface requestInfo {
 
         // 显示成功提示
         this.showToast(loginResult.message || '登录成功！');
+        // 初始化 AlarmManager
+        const uiContext = this.getUIContext();
+        const context = uiContext.getHostContext();
 
+        if (context) {
+          AlarmManager.getInstance().init(context, this.username);
+        }
         // 跳转到首页
         NavigationManager.getInstance().push('Yibiaopan', {
           from: 'Login',
@@ -487,6 +494,7 @@ Stack() {
       })
       .onClick(() => {
         this.handleLogin();
+        NavigationManager.getInstance().push('Yibiaopan',{})
       })
 
     }

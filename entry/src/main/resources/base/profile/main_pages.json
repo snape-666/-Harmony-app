@@ -18,6 +18,7 @@
     "pages/Rule",
     "pages/Internet",
     "pages/AIidentify",
-    "pages/AIResult"
+    "pages/AIResult",
+    "pages/Monitor"
   ]
 }

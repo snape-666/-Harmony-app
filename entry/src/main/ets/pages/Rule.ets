@@ -259,6 +259,7 @@ export struct Rule {
                   .fontColor("#13EC5B")
                   .onClick(() => {
                     console.log("点击查看全部日志");
+
                   })
               }
               .width("95%")

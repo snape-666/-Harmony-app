@@ -17,6 +17,7 @@ import {Setting} from './Setting'
 import {Internet} from './Internet'
 import { AIidentify } from './AIidentify';
 import {AIResult} from './AIResult'
+import {Monitor} from './Monitor'
 
 
 interface swiperItem{
@@ -418,6 +419,9 @@ export struct Index {
     }
     else if (name==='AIResult') {
       AIResult({params:param})
+    }
+    else if (name==='Monitor') {
+      Monitor({params:param})
     }
 
   }
