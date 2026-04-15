@@ -167,12 +167,16 @@ const CONNECT_MS = 10000;
 const READ_MS = 30000;
 const ERROR_BODY_MAX = 500;
 
+// v3：details 类参数须放在 URL query，不能放在 JSON body（否则 400 Unknown modifier）
+const HEALTH_URL_WITH_QUERY: string =
+  'https://api.plant.id/v3/health_assessment?disease_details=description,treatment,cause,local_name&language=zh';
+const IDENTIFY_URL_WITH_QUERY: string =
+  'https://api.plant.id/v3/identification?details=common_names,taxonomy,description&language=zh';
+
 class PlantIdService {
   private static instance: PlantIdService;
   // https://web.plant.id 申请 Api-Key
   private readonly API_KEY: string = 'hlBPCmY3YwxiysmR5uOzqjjoK7WWQbb1weeoS4jVgZIsXmZS34';
-  private readonly HEALTH_URL: string = 'https://api.plant.id/v3/health_assessment';
-  private readonly IDENTIFY_URL: string = 'https://api.plant.id/v3/identification';
   private readonly USAGE_URL: string = 'https://api.plant.id/v3/usage';
 
   static getInstance(): PlantIdService {
@@ -185,6 +189,11 @@ class PlantIdService {
   private logHttpError(url: string, code: number, body: string): void {
     const snippet = body.length > ERROR_BODY_MAX ? body.substring(0, ERROR_BODY_MAX) + '...' : body;
     console.error(`Plant.id HTTP ${code} ${url} body: ${snippet}`);
+  }
+
+  /** v3 创建识别成功时返回 201，部分接口也可能返回 200 */
+  private isHttpSuccess(code: number): boolean {
+    return code === 200 || code === 201;
   }
 
   private safeParseObject(body: string): Record<string, Object> | null {
@@ -238,7 +247,7 @@ class PlantIdService {
     try {
       console.info('Plant.id health_assessment 请求开始');
 
-      const response = await httpRequest.request(this.HEALTH_URL, {
+      const response = await httpRequest.request(HEALTH_URL_WITH_QUERY, {
         method: http.RequestMethod.POST,
         header: {
           'Content-Type': 'application/json',
@@ -246,8 +255,6 @@ class PlantIdService {
         },
         extraData: JSON.stringify({
           images: [imageBase64],
-          disease_details: ['description', 'treatment', 'cause', 'local_name'],
-          language: 'zh',
           similar_images: true
         }),
         connectTimeout: CONNECT_MS,
@@ -255,8 +262,8 @@ class PlantIdService {
       });
 
       const bodyStr = response.result as string;
-      if (response.responseCode !== 200) {
-        this.logHttpError(this.HEALTH_URL, response.responseCode, bodyStr ?? '');
+      if (!this.isHttpSuccess(response.responseCode)) {
+        this.logHttpError(HEALTH_URL_WITH_QUERY, response.responseCode, bodyStr ?? '');
         return null;
       }
 
@@ -287,24 +294,22 @@ class PlantIdService {
     const httpRequest = http.createHttp();
 
     try {
-      const response = await httpRequest.request(this.IDENTIFY_URL, {
+      const response = await httpRequest.request(IDENTIFY_URL_WITH_QUERY, {
         method: http.RequestMethod.POST,
         header: {
           'Content-Type': 'application/json',
           'Api-Key': this.API_KEY
         },
         extraData: JSON.stringify({
-          images: [imageBase64],
-          plant_details: ['common_names', 'taxonomy', 'description'],
-          language: 'zh'
+          images: [imageBase64]
         }),
         connectTimeout: CONNECT_MS,
         readTimeout: READ_MS
       });
 
       const bodyStr = response.result as string;
-      if (response.responseCode !== 200) {
-        this.logHttpError(this.IDENTIFY_URL, response.responseCode, bodyStr ?? '');
+      if (!this.isHttpSuccess(response.responseCode)) {
+        this.logHttpError(IDENTIFY_URL_WITH_QUERY, response.responseCode, bodyStr ?? '');
         return null;
       }
 
@@ -340,7 +345,7 @@ class PlantIdService {
       });
 
       const bodyStr = response.result as string;
-      if (response.responseCode !== 200) {
+      if (!this.isHttpSuccess(response.responseCode)) {
         this.logHttpError(this.USAGE_URL, response.responseCode, bodyStr ?? '');
         return null;
       }
