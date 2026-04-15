@@ -1,7 +1,7 @@
 // entry/src/main/ets/common/ImageUtils.ets
 import image from '@ohos.multimedia.image';
-import fs from '@ohos.file.fs';
 import util from '@ohos.util';
+import { fileIo } from '@kit.CoreFileKit';
 
 // 图片压缩配置类型
 export interface CompressOptions {
@@ -16,6 +16,26 @@ const DEFAULT_OPTIONS: CompressOptions = {
 };
 
 export class ImageUtils {
+  private static readUriToArrayBuffer(uri: string): ArrayBuffer | null {
+    try {
+      const file = fileIo.openSync(uri, fileIo.OpenMode.READ_ONLY);
+      const stat = fileIo.statSync(uri);
+      const fileSize = Number(stat.size);
+      if (!fileSize || fileSize <= 0) {
+        fileIo.closeSync(file);
+        console.error('URI读取失败: 文件大小无效');
+        return null;
+      }
+      const buffer = new ArrayBuffer(fileSize);
+      fileIo.readSync(file.fd, buffer);
+      fileIo.closeSync(file);
+      return buffer;
+    } catch (error) {
+      console.error('URI读取为ArrayBuffer失败:', error);
+      return null;
+    }
+  }
+
   /**
    * 将PixelMap转换为Base64字符串
    */
@@ -58,8 +78,20 @@ export class ImageUtils {
       imageSource.release();
       return pixelMap;
     } catch (error) {
-      console.error('URI转PixelMap失败:', error);
-      return null;
+      console.warn('URI直读转PixelMap失败，尝试Buffer回退:', error);
+      const buffer = ImageUtils.readUriToArrayBuffer(uri);
+      if (!buffer) {
+        return null;
+      }
+      try {
+        const imageSource = image.createImageSource(buffer);
+        const pixelMap = await imageSource.createPixelMap();
+        imageSource.release();
+        return pixelMap;
+      } catch (fallbackError) {
+        console.error('URI回退转PixelMap失败:', fallbackError);
+        return null;
+      }
     }
   }
 
@@ -68,13 +100,10 @@ export class ImageUtils {
    */
   static async uriToBase64(uri: string): Promise<string> {
     try {
-      const file = fs.openSync(uri, fs.OpenMode.READ_ONLY);
-      const stat = fs.statSync(uri);
-      const buffer = new ArrayBuffer(stat.size);
-      fs.readSync(file.fd, buffer);
-      fs.closeSync(file);
-
-      // 将 ArrayBuffer 转换为 Uint8Array
+      const buffer = ImageUtils.readUriToArrayBuffer(uri);
+      if (!buffer) {
+        return '';
+      }
       const uint8Array = new Uint8Array(buffer);
       const base64Helper = new util.Base64Helper();
       return base64Helper.encodeToStringSync(uint8Array);
