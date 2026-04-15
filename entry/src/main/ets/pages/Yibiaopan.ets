@@ -60,6 +60,8 @@ export struct Yibiaopan {
   @State isDeviceRunning: boolean = true;  // 设备运行状态
   private readonly API_URL: string = 'https://guet-farm.netlify.app/.netlify/functions/getData';
   private refreshTimer?: number;
+  /** 避免首次 onPageShow 与 aboutToAppear 重复拉取传感器 */
+  private firstPageShowHandled: boolean = false;
   @State cardList: CardData[] = [
     { icon: $r('app.media.o2temper'), title: '空气温度', value: '--', unit: ' ', subTitle: '空气湿度', subValue: '--' },
     { icon: $r('app.media.co2'), title: 'co2浓度', value: '--', unit: ' ', subTitle: ' ', subValue: '' },
@@ -105,9 +107,30 @@ export struct Yibiaopan {
 
   }
   aboutToDisappear(): void {
-    // 清除定时器
-    if (this.refreshTimer) {
+    this.stopSensorRefresh();
+  }
+
+  /** 仪表盘被导航子页遮挡时暂停轮询，避免在识图等页面弹出传感器 Toast */
+  onPageHide(): void {
+    this.stopSensorRefresh();
+  }
+
+  onPageShow(): void {
+    if (NavigationManager.isDashboardSensorPaused()) {
+      return;
+    }
+    if (!this.firstPageShowHandled) {
+      this.firstPageShowHandled = true;
+      return;
+    }
+    this.fetchSensorData();
+    this.startAutoRefresh();
+  }
+
+  private stopSensorRefresh(): void {
+    if (this.refreshTimer !== undefined) {
       clearInterval(this.refreshTimer);
+      this.refreshTimer = undefined;
     }
   }
 
@@ -124,8 +147,17 @@ export struct Yibiaopan {
     }
   }
 
+  /** 请求返回时仪表盘可能已不可见，避免在子页弹出传感器类 Toast */
+  private showSensorToast(message: string): void {
+    if (NavigationManager.isDashboardSensorPaused()) {
+      return;
+    }
+    this.showToast(message);
+  }
+
   // 开始自动刷新
   startAutoRefresh() {
+    this.stopSensorRefresh();
     this.refreshTimer = setInterval(() => {
       this.fetchSensorData();
     }, 30000); // 30秒刷新一次
@@ -133,6 +165,9 @@ export struct Yibiaopan {
 
   // 获取传感器数据
   async fetchSensorData() {
+    if (NavigationManager.isDashboardSensorPaused()) {
+      return;
+    }
     try {
       console.log('开始获取传感器数据...');
       const httpRequest: http.HttpRequest = http.createHttp();
@@ -147,6 +182,11 @@ export struct Yibiaopan {
 
       console.log('响应状态码:', response.responseCode);
       console.log('原始响应:', response.result);
+
+      if (NavigationManager.isDashboardSensorPaused()) {
+        httpRequest.destroy();
+        return;
+      }
 
       if (response.responseCode === 200) {
         // 第一次解析：获取外层数据
@@ -165,26 +205,26 @@ export struct Yibiaopan {
             this.updateUIWithData(latestData);
             this.lastUpdateTime = `${latestData.date} ${latestData.time}`;
             if (!Yibiaopan.hasShownToast) {
-              this.showToast('数据更新成功');
+              this.showSensorToast('数据更新成功');
               Yibiaopan.hasShownToast = true;
             }
           } else {
             console.warn('没有找到传感器数据');
-            this.showToast('暂无传感器数据');
+            this.showSensorToast('暂无传感器数据');
           }
         } else {
           console.warn('接口返回失败:', outerResult);
-          this.showToast('获取数据失败');
+          this.showSensorToast('获取数据失败');
         }
       } else {
         console.error('请求失败，状态码:', response.responseCode);
-        this.showToast(`请求失败，状态码：${response.responseCode}`);
+        this.showSensorToast(`请求失败，状态码：${response.responseCode}`);
       }
 
       httpRequest.destroy();
     } catch (error) {
       console.error('获取传感器数据失败:', error);
-      this.showToast('网络连接失败，请检查网络');
+      this.showSensorToast('网络连接失败，请检查网络');
     } finally {
       this.isLoading = false;
     }
