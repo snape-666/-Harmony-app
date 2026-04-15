@@ -3,9 +3,9 @@ import PlantIdService, { DiagnosisResult } from '../service/PlantIdService';
 import { ImageUtils } from '../common/ImageUtils';
 import { promptAction } from '@kit.ArkUI';
 import photoAccessHelper from '@ohos.file.photoAccessHelper';
-import { image } from '@kit.ImageKit';
 import { NavigationManager } from '../common/NavigationManager';
 
+@Entry
 @Component
 export struct AIidentify {
   @State params: Record<string, Object> = {};
@@ -26,30 +26,47 @@ export struct AIidentify {
 
       if (pickerResult.photoUris.length > 0) {
         const uri = pickerResult.photoUris[0];
-        const imageSource = image.createImageSource(uri);
-        const pixelMap = await imageSource.createPixelMap();
+        const pixelMap = await ImageUtils.uriToPixelMap(uri);
+        if (!pixelMap) {
+          this.analysisResult = '图片读取失败，请重试';
+          promptAction.showToast({ message: '图片读取失败，请重试', duration: 2000 });
+          return;
+        }
 
         this.analysisResult = '';
         this.diseaseName = '';
         this.treatmentAdvice = '';
         this.plantDisplayName = '';
+        this.selectedImage = pixelMap;
 
         const compressed = await ImageUtils.compressImage(pixelMap);
-        this.selectedImage = compressed;
         this.isAnalyzing = true;
 
         await this.analyzeWithPlantId(compressed);
+      } else {
+        promptAction.showToast({ message: '未选择图片', duration: 1500 });
       }
     } catch (error) {
       console.error('选择图片失败:', error);
+      this.analysisResult = '选择图片失败，请检查权限后重试';
+      try {
+        promptAction.showToast({ message: '选择图片失败，请检查权限后重试', duration: 2000 });
+      } catch {
+        // ignore
+      }
     }
   }
 
-  async analyzeWithPlantId(pixelMap: image.PixelMap) {
+  async analyzeWithPlantId(pixelMap: PixelMap) {
     console.info('收到的 PixelMap:', pixelMap);
     this.isAnalyzing = true;
     try {
       const base64 = await ImageUtils.pixelMapToBase64(pixelMap);
+      if (!base64) {
+        this.analysisResult = '图片编码失败，请重试';
+        promptAction.showToast({ message: '图片编码失败，请重试', duration: 2000 });
+        return;
+      }
       const result = await PlantIdService.analyzeHealth(base64);
 
       if (result) {
