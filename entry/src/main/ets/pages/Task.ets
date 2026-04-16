@@ -1,6 +1,7 @@
 import { NavigationManager } from "../common/NavigationManager";
+import { TaskService } from "../service/TaskService";
 import {NewTask} from './NewTask'
-
+import { http } from '@kit.NetworkKit';
 
 
 interface CalendarDay {
@@ -8,6 +9,7 @@ interface CalendarDay {
   isCurrentMonth: boolean;
 }
 interface CardItem{
+  id: string;
   icon:string;
   title:string;
   content:string;
@@ -22,13 +24,118 @@ export struct Task {
   @State currentMonth: number = 4; // 4月
   @State selectedDay: number = 5; // 选中5号
 
-  @State cardList:CardItem[]=[
-    {icon:'app.media.water',title:'早上六点进行灌溉',content:'温室A区',isOn:false},
-    {icon:'app.media.sun',title:'上午十点打开灯光增强模式',content:'培育托盘·亮度80%',isOn:false},
-    {icon:'app.media.gleaf',title:'下午两点混合营养液',content:'水培系统B·氮磷钾溶液',isOn:false}
-  ];
-
+  @State cardList:CardItem[]=[];
+  @State pendingCount: number = 0;
+  private taskService: TaskService = TaskService.getInstance();
   private weekDays: string[] = ['日', '一', '二', '三', '四', '五', '六'];
+  // 传感器日期数据
+  @State sensorDate: string = '';
+  @State isLoading: boolean = true;
+  aboutToAppear(): void {
+    // 加载今日任务
+    this.loadTodayTasks();
+    // ✅ 改为与手机系统时间绑定
+    const now = new Date();
+    this.currentYear = now.getFullYear();
+    this.currentMonth = now.getMonth() + 1;
+    this.selectedDay = now.getDate();
+
+  }
+
+  aboutToDisappear(): void {
+    this.taskService.stopScheduler();
+  }
+
+  // 获取传感器接口的日期
+  async fetchSensorDate(): Promise<void> {
+    try {
+      const url = 'https://guet-farm.netlify.app/.netlify/functions/getData';
+      const httpRequest = http.createHttp();
+      const response = await httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        connectTimeout: 10000,
+        readTimeout: 10000
+      });
+
+      if (response.responseCode === 200) {
+        const outerData = JSON.parse(response.result as string) as Record<string, Object>;
+        if (outerData.success && outerData.data) {
+          // 获取最新的日期
+          const dates = Object.keys(outerData.data as Record<string, Object>);
+          if (dates.length > 0) {
+            const latestDate = dates.sort().reverse()[0];
+            this.sensorDate = latestDate;
+            // 解析日期并更新日历选中
+            const dateParts = latestDate.split('-');
+            if (dateParts.length >= 3) {
+              const year = parseInt(dateParts[0]);
+              const month = parseInt(dateParts[1]);
+              const day = parseInt(dateParts[2]);
+              this.currentYear = year;
+              this.currentMonth = month;
+              this.selectedDay = day;
+              console.log(`传感器日期: ${this.sensorDate}, 日历已更新`);
+            }
+          }
+        }
+      }
+      httpRequest.destroy();
+    } catch (error) {
+      console.error('获取传感器日期失败:', error);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+  // 根据类别获取图标
+  private getIconByCategory(category: string): string {
+    switch (category) {
+      case '灌溉': return 'app.media.water';
+      case '照明': return 'app.media.sun';
+      case '营养素': return 'app.media.gleaf';
+      default: return 'app.media.others';
+    }
+  }
+
+  // 格式化时间显示
+  private formatTime(time24: string): string {
+    const GeneratedDestructArray_1 = time24.split(':');
+    const hour = GeneratedDestructArray_1[0];
+    const minute = GeneratedDestructArray_1[1];
+    let hourNum = parseInt(hour);
+    let period = '上午';
+    if (hourNum >= 12) {
+      period = '下午';
+      if (hourNum > 12) hourNum -= 12;
+    }
+    if (hourNum === 0) {
+      hourNum = 12;
+      period = '上午';
+    }
+    return `${period}${hourNum}:${minute}`;
+  }
+
+  // 完成任务
+  async completeTask(taskId: string, index: number): Promise<void> {
+    const success = await this.taskService.completeTask(taskId);
+    if (success) {
+      this.cardList.splice(index, 1);
+      this.pendingCount = this.taskService.getPendingCount();
+      console.log(`任务完成: ${taskId}`);
+    }
+  }
+  // 加载今日任务
+  loadTodayTasks(): void {
+    const todayTasks = this.taskService.getTodayTasks();
+    this.pendingCount = this.taskService.getPendingCount();
+
+    this.cardList = todayTasks.map(task => ({
+      id: task.id,
+      icon: this.getIconByCategory(task.category),
+      title: `${this.formatTime(task.time)} ${task.name}`,
+      content: task.description || task.category,
+      isOn: false
+    }as CardItem));
+  }
 
   // 计算当月日期数组（包含上个月/下个月的灰显日期）
   getCalendarDays(): CalendarDay[] {
@@ -190,7 +297,7 @@ export struct Task {
 
             Row(){
               Text('今日任务').fontWeight(FontWeight.Bold).fontSize('20vp')
-              Text('3待定').fontColor('#13EC5B').fontSize('15vp').fontWeight(FontWeight.Bold)
+              Text(`${this.pendingCount}待定`).fontColor('#13EC5B').fontSize('15vp').fontWeight(FontWeight.Bold)
                 .backgroundColor('#1a13ec5b')
                 .padding({left:17,right:17,top:8,bottom:8})
                 .borderRadius(17)
@@ -230,11 +337,10 @@ export struct Task {
                   .height('30vp')
                   .selectedColor('#13EC5B')
                   .onChange((isOn: boolean) => {
-                    this.cardList[index].isOn= isOn;
-                    console.log('第${index+1}个卡片开关：', isOn);
+                    if (isOn) {
+                      this.completeTask(item.id, index);
+                    }
                   })
-
-
               }
               .width('96%')
               .height('75vp')
@@ -279,6 +385,7 @@ export struct Task {
         .backgroundColor('#80f1f5f9')
         .flexShrink(0)
         .scrollBar(BarState.Off)
+        .align(Alignment.TopStart)
 
 
 

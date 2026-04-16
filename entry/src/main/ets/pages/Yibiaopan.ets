@@ -445,7 +445,7 @@ export struct Yibiaopan {
                 ForEach(this.cardList, (item: CardData,index:number) => {
                   GridItem() {
                     Column() {
-                      Row({ space: 20 }) {
+                      Row({ space: 15 }) {
                         Column({ space: 10 }) {
                           Image(item.icon)
                             .width('20vp')
@@ -458,7 +458,7 @@ export struct Yibiaopan {
 
                         }
                         .alignItems(HorizontalAlign.Start)
-                        .margin({ top: 15 })
+                        .margin({ top: 15,left:5 })
 
                         Column({ space: 10 }) {
                           Text(item.unit)
@@ -471,12 +471,13 @@ export struct Yibiaopan {
                             .fontSize('20vp')
                             .fontWeight(FontWeight.Bold)
                         }
-                        .margin({ top: 15 })
-                        .width('30%')
+                        .margin({ top: 15,right:5 })
+                        .width('40%')
+                        .alignItems(HorizontalAlign.Start)
                       }
 
                     }
-                    .width('160vp')
+                    .width('170vp')
                     .height('100vp')
                     .borderRadius(24)
                     .backgroundColor(Color.White)

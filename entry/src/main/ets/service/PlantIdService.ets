@@ -3,6 +3,212 @@ import { http } from '@kit.NetworkKit';
 import { BusinessError } from '@ohos.base';
 
 // ============ v3 健康评估响应（与 response_health_assessment.json 对齐） ============
+// 在文件顶部添加病害中英文映射表
+const DISEASE_NAME_MAP: Record<string, string> = {
+  // 真菌病害
+  'Botrytis': '灰霉病',
+  'Powdery Mildew': '白粉病',
+  'Downy Mildew': '霜霉病',
+  'Late Blight': '晚疫病',
+  'Early Blight': '早疫病',
+  'Rust': '锈病',
+  'Anthracnose': '炭疽病',
+  'Fusarium Wilt': '枯萎病',
+  'Verticillium Wilt': '黄萎病',
+  'Sclerotinia': '菌核病',
+  'Septoria': '叶斑病',
+  'Cercospora': '褐斑病',
+  'Alternaria': '黑斑病',
+  'Rhizoctonia': '立枯病',
+  'Phytophthora': '疫病',
+  'Pythium': '腐霉病',
+
+  // 细菌病害
+  'Bacterial Blight': '细菌性疫病',
+  'Bacterial Leaf Spot': '细菌性叶斑病',
+  'Bacterial Wilt': '青枯病',
+  'Crown Gall': '冠瘿病',
+  'Fire Blight': '火疫病',
+  'Soft Rot': '软腐病',
+
+  // 病毒病害
+  'Mosaic Virus': '花叶病毒病',
+  'Yellow Vein Mosaic': '黄脉花叶病',
+  'Leaf Curl Virus': '卷叶病毒病',
+  'Ring Spot Virus': '环斑病毒病',
+
+  // 虫害
+  'Aphid': '蚜虫',
+  'Whitefly': '白粉虱',
+  'Spider Mite': '红蜘蛛',
+  'Thrips': '蓟马',
+  'Leaf Miner': '潜叶蝇',
+  'Caterpillar': '毛虫',
+  'Beetle': '甲虫',
+  'Weevil': '象鼻虫',
+  'Nematode': '线虫',
+  'Slug': '蛞蝓',
+  'Snail': '蜗牛',
+
+  // 生理性病害
+  'Nutrient Deficiency': '缺素症',
+  'Sunburn': '日灼病',
+  'Water Stress': '水分胁迫',
+  'Cold Injury': '冷害',
+  'Frost Damage': '冻害'
+};
+
+
+
+// ============ 新增：本地病害知识库（包含详细描述和治疗建议） ============
+
+interface DiseaseKnowledge {
+  description: string;
+  treatment: string;
+  cause: string;
+}
+
+const DISEASE_KNOWLEDGE_BASE: Record<string, DiseaseKnowledge> = {
+  'Botrytis': {
+    description: '由灰葡萄孢菌引起的真菌性病害，主要危害花、果、叶。病部产生灰色霉层，湿度大时霉层明显，果实腐烂。',
+    treatment: '【防治措施】\n1. 及时摘除病花、病果、病叶，减少传染源\n2. 降低棚内湿度，加强通风透光\n3. 发病初期可使用50%腐霉利可湿性粉剂1500倍液喷雾\n4. 也可使用40%嘧霉胺悬浮剂1000倍液或50%异菌脲可湿性粉剂1000倍液\n5. 每隔7-10天喷一次，连续2-3次，交替用药',
+    cause: '由灰葡萄孢菌（Botrytis cinerea）引起，高湿（90%以上）、低温（15-20℃）环境易发病，植株伤口多、氮肥过量会加重病情。'
+  },
+  'Powdery Mildew': {
+    description: '叶片表面出现白色粉状霉层，严重时叶片枯黄脱落，影响光合作用。',
+    treatment: '【防治措施】\n1. 选用抗病品种，合理密植\n2. 发病初期喷洒25%三唑酮可湿性粉剂2000倍液\n3. 或使用40%氟硅唑乳油8000倍液、10%苯醚甲环唑水分散粒剂1500倍液\n4. 加强田间管理，避免氮肥过量，增施磷钾肥\n5. 每隔7-10天喷一次，连续2-3次',
+    cause: '由白粉菌科（Erysiphaceae）真菌引起，温暖（20-25℃）、干燥、通风不良环境易发病，氮肥过多会加重病情。'
+  },
+  'Downy Mildew': {
+    description: '叶片出现水渍状淡黄色病斑，叶背产生灰白色霉层，严重时叶片干枯死亡。',
+    treatment: '【防治措施】\n1. 选用抗病品种，实行轮作\n2. 发病初期喷洒72%霜脲氰·锰锌可湿性粉剂800倍液\n3. 或使用25%甲霜灵可湿性粉剂600倍液、50%烯酰吗啉水分散粒剂2000倍液\n4. 加强通风，降低田间湿度\n5. 每隔5-7天喷一次，连续2-3次',
+    cause: '由霜霉菌（Peronosporaceae）引起，高湿（85%以上）、多雨、昼夜温差大环境易发病。'
+  },
+  'Late Blight': {
+    description: '叶片出现水渍状暗绿色病斑，潮湿时病斑边缘有白色霉层，茎部出现黑褐色条斑，果实出现褐色硬斑。',
+    treatment: '【防治措施】\n1. 选用抗病品种，避免连作\n2. 发病初期喷洒72%霜脲氰·锰锌可湿性粉剂600-800倍液\n3. 或使用50%烯酰吗啉水分散粒剂2000倍液、68%精甲霜灵·锰锌水分散粒剂600倍液\n4. 加强通风，降低田间湿度\n5. 每隔5-7天喷一次，连续2-3次',
+    cause: '由致病疫霉（Phytophthora infestans）引起，高湿（90%以上）、凉爽（15-22℃）环境易发病，连续阴雨天会快速蔓延。'
+  },
+  'Early Blight': {
+    description: '叶片出现褐色轮纹斑，病斑有同心轮纹，严重时叶片枯死。',
+    treatment: '【防治措施】\n1. 实行轮作，减少病原积累\n2. 发病初期喷洒75%百菌清可湿性粉剂600倍液\n3. 或使用50%异菌脲可湿性粉剂1000倍液、10%苯醚甲环唑水分散粒剂1500倍液\n4. 加强肥水管理，增强植株抗性\n5. 每隔7-10天喷一次，连续2-3次',
+    cause: '由茄链格孢菌（Alternaria solani）引起，温暖（25-30℃）、高湿环境易发病，植株衰弱时更易感病。'
+  },
+  'Anthracnose': {
+    description: '叶片出现褐色凹陷病斑，边缘呈红褐色，病斑上有小黑点，果实腐烂。',
+    treatment: '【防治措施】\n1. 选用抗病品种，合理密植\n2. 发病初期喷洒80%代森锰锌可湿性粉剂600倍液\n3. 或使用25%咪鲜胺乳油1000倍液、10%苯醚甲环唑水分散粒剂1500倍液\n4. 及时清除病叶病果\n5. 每隔7-10天喷一次，连续2-3次',
+    cause: '由炭疽菌（Colletotrichum）引起，高温（25-30℃）、高湿环境易发病，伤口多会加重病情。'
+  },
+  'Fusarium Wilt': {
+    description: '植株萎蔫，叶片从下向上逐渐变黄枯死，维管束变褐。',
+    treatment: '【防治措施】\n1. 选用抗病品种，实行轮作\n2. 发病初期用50%多菌灵可湿性粉剂500倍液灌根\n3. 或使用70%甲基硫菌灵可湿性粉剂800倍液、3%甲霜灵·噁霉灵水剂500倍液\n4. 加强排水，避免田间积水\n5. 发现病株及时拔除，病穴消毒',
+    cause: '由镰刀菌（Fusarium oxysporum）引起，连作、土壤带菌、根部受伤、高温高湿环境易发病。'
+  },
+  'Rust': {
+    description: '叶片出现锈褐色粉末状病斑，严重时叶片干枯脱落。',
+    treatment: '【防治措施】\n1. 选用抗病品种，合理密植\n2. 发病初期喷洒25%三唑酮可湿性粉剂2000倍液\n3. 或使用12.5%烯唑醇可湿性粉剂3000倍液、30%苯醚甲环唑·丙环唑乳油3000倍液\n4. 加强通风透光，降低湿度\n5. 每隔7-10天喷一次，连续2-3次',
+    cause: '由锈菌（Pucciniales）引起，温暖（20-25℃）、高湿环境易发病，氮肥过多会加重病情。'
+  },
+  'Aphid': {
+    description: '蚜虫聚集在嫩叶、嫩芽上吸食汁液，导致叶片卷曲、黄化，分泌蜜露引发煤污病。',
+    treatment: '【防治措施】\n1. 悬挂黄色粘虫板诱杀有翅蚜\n2. 发病初期喷洒10%吡虫啉可湿性粉剂2000倍液\n3. 或使用50%抗蚜威可湿性粉剂3000倍液、2.5%高效氯氟氰菊酯乳油2000倍液\n4. 保护天敌如瓢虫、草蛉\n5. 每隔7-10天喷一次，连续2-3次',
+    cause: '由蚜虫（Aphidoidea）引起，温暖、干旱环境易大量繁殖，氮肥过多会吸引蚜虫。'
+  },
+  'Whitefly': {
+    description: '白粉虱聚集在叶背吸食汁液，导致叶片黄化、脱落，分泌蜜露引发煤污病，传播病毒病。',
+    treatment: '【防治措施】\n1. 悬挂黄色粘虫板诱杀成虫\n2. 发病初期喷洒25%噻嗪酮可湿性粉剂1500倍液\n3. 或使用10%吡虫啉可湿性粉剂2000倍液、2.5%联苯菊酯乳油2000倍液\n4. 保护天敌如丽蚜小蜂\n5. 每隔5-7天喷一次，连续2-3次',
+    cause: '由白粉虱（Trialeurodes vaporariorum）引起，温暖、干燥、通风不良环境易大量发生。'
+  },
+  'Spider Mite': {
+    description: '红蜘蛛在叶背吸食汁液，叶片出现黄白色小点，严重时叶片枯黄脱落，有细丝网。',
+    treatment: '【防治措施】\n1. 及时清除杂草，减少越冬场所\n2. 发病初期喷洒15%哒螨灵乳油2000倍液\n3. 或使用1.8%阿维菌素乳油3000倍液、20%螨死净可湿性粉剂2000倍液\n4. 高温干燥天气注意预防\n5. 每隔5-7天喷一次，连续2-3次',
+    cause: '由叶螨（Tetranychus urticae）引起，高温（25-35℃）、干旱、通风不良环境易大量繁殖。'
+  },
+  'Thrips': {
+    description: '蓟马锉吸叶片和花器，导致叶片银灰色斑驳，花畸形，果实疤痕。',
+    treatment: '【防治措施】\n1. 悬挂蓝色粘虫板诱杀\n2. 发病初期喷洒10%吡虫啉可湿性粉剂2000倍液\n3. 或使用25%噻虫嗪水分散粒剂5000倍液、2.5%高效氯氟氰菊酯乳油2000倍液\n4. 清除田间杂草\n5. 每隔5-7天喷一次，连续2-3次',
+    cause: '由蓟马（Thripidae）引起，温暖、干旱环境易大量发生。'
+  }
+};
+
+// 默认病害信息（当病害不在知识库中时使用）
+const DEFAULT_DISEASE_KNOWLEDGE: DiseaseKnowledge = {
+  description: '检测到疑似病虫害，建议及时采取防治措施，防止扩散蔓延。',
+  treatment: '【通用防治建议】\n1. 及时清除病叶、病株，减少传染源\n2. 保持田间通风透光，降低湿度\n3. 避免过度浇水，采用滴灌方式\n4. 发病初期可使用广谱杀菌剂喷洒\n5. 建议咨询当地农业技术人员获取针对性方案',
+  cause: '环境因素或病原体感染，具体原因需进一步诊断。'
+};
+// ✅ 在这里添加在线翻译函数
+async function onlineTranslate(text: string): Promise<string | null> {
+  try {
+    const httpRequest = http.createHttp();
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|zh`;
+    const response = await httpRequest.request(url, {
+      method: http.RequestMethod.GET,
+      connectTimeout: 5000,
+      readTimeout: 5000
+    });
+
+    if (response.responseCode === 200) {
+      const data = JSON.parse(response.result as string) as Record<string, Object>;
+      const translatedText = (data.responseData as Record<string, string>)?.translatedText;
+      if (translatedText && translatedText !== text) {
+        console.info(`翻译成功: ${text} -> ${translatedText}`);
+        return translatedText;
+      }
+    }
+    httpRequest.destroy();
+    return null;
+  } catch (error) {
+    console.error('翻译API调用失败:', error);
+    return null;
+  }
+}
+
+// 默认翻译函数
+async function translateDiseaseName(englishName: string): Promise<string> {
+  if (!englishName) return '未知病害';
+  if (DISEASE_NAME_MAP[englishName]) {
+    return DISEASE_NAME_MAP[englishName];
+  }
+  const keys = Object.keys(DISEASE_NAME_MAP);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (englishName.toLowerCase().includes(key.toLowerCase()) ||
+    key.toLowerCase().includes(englishName.toLowerCase())) {
+      return DISEASE_NAME_MAP[key];
+    }
+  }
+  // 3. 调用在线翻译API（兜底方案）
+  try {
+    const translated = await onlineTranslate(englishName);
+    if (translated) {
+      // 将翻译结果缓存到映射表，下次直接使用
+      DISEASE_NAME_MAP[englishName] = translated;
+      return translated;
+    }
+  } catch (error) {
+    console.error('在线翻译失败:', error);
+  }
+  return englishName;
+}
+
+// 获取病害知识（描述、治疗建议、原因）
+function getDiseaseKnowledge(diseaseName: string): DiseaseKnowledge {
+  // 先尝试直接匹配
+  if (DISEASE_KNOWLEDGE_BASE[diseaseName]) {
+    return DISEASE_KNOWLEDGE_BASE[diseaseName];
+  }
+  // 使用 Object.keys + for 循环替代 for...in
+  const keys = Object.keys(DISEASE_KNOWLEDGE_BASE);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (diseaseName.toLowerCase().includes(key.toLowerCase()) ||
+    key.toLowerCase().includes(diseaseName.toLowerCase())) {
+      return DISEASE_KNOWLEDGE_BASE[key];
+    }
+  }
+  return DEFAULT_DISEASE_KNOWLEDGE;
+}
 
 interface V3IsHealthyBlock {
   probability?: number;
@@ -24,24 +230,30 @@ interface V3DiseaseSuggestion {
   details?: V3DiseaseDetails;
 }
 
+interface GeneratedTypeLiteralInterface_1 {
+  suggestions?: V3DiseaseSuggestion[];
+}
+
+interface GeneratedTypeLiteralInterface_2 {
+  suggestions?: V3PlantClassificationSuggestion[];
+}
+
 interface V3HealthResultPayload {
   is_healthy?: V3IsHealthyBlock;
-  disease?: {
-    suggestions?: V3DiseaseSuggestion[];
-  };
-  classification?: {
-    suggestions?: V3PlantClassificationSuggestion[];
-  };
+  disease?: GeneratedTypeLiteralInterface_1;
+  classification?: GeneratedTypeLiteralInterface_2;
+}
+
+interface GeneratedTypeLiteralInterface_3 {
+  common_names?: string[];
+  taxonomy?: PlantTaxonomy;
+  description?: Description;
 }
 
 interface V3PlantClassificationSuggestion {
   name?: string;
   probability?: number;
-  details?: {
-    common_names?: string[];
-    taxonomy?: PlantTaxonomy;
-    description?: Description;
-  };
+  details?: GeneratedTypeLiteralInterface_3;
 }
 
 interface V3HealthAssessmentEnvelope {
@@ -125,12 +337,16 @@ export interface DiseaseTreatment {
 
 // ============ v3 物种识别（与 response_species_identification.json 对齐） ============
 
+interface GeneratedTypeLiteralInterface_5 {
+  suggestions?: V3PlantClassificationSuggestion[];
+}
+
+interface GeneratedTypeLiteralInterface_4 {
+  classification?: GeneratedTypeLiteralInterface_5;
+}
+
 interface V3IdentificationEnvelope {
-  result?: {
-    classification?: {
-      suggestions?: V3PlantClassificationSuggestion[];
-    };
-  };
+  result?: GeneratedTypeLiteralInterface_4;
 }
 
 // 用量查询响应
@@ -169,7 +385,7 @@ const ERROR_BODY_MAX = 500;
 
 // v3：details 类参数须放在 URL query，不能放在 JSON body（否则 400 Unknown modifier）
 const HEALTH_URL_WITH_QUERY: string =
-  'https://api.plant.id/v3/health_assessment?disease_details=description,treatment,cause,local_name&language=zh';
+  'https://api.plant.id/v3/health_assessment?disease_details=description,treatment,cause,local_name&language=zh&full_disease_list=true';
 const IDENTIFY_URL_WITH_QUERY: string =
   'https://api.plant.id/v3/identification?details=common_names,taxonomy,description&language=zh';
 
@@ -232,6 +448,8 @@ class PlantIdService {
     return parts.join('\n\n');
   }
 
+
+
   /**
    * 分析农作物健康状态（病虫害诊断）
    * @returns 诊断结果，失败返回 null
@@ -262,6 +480,8 @@ class PlantIdService {
       });
 
       const bodyStr = response.result as string;
+      console.info('Plant.id 响应状态码:', response.responseCode);
+      console.info('Plant.id 完整响应:', bodyStr); //  打印完整响应
       if (!this.isHttpSuccess(response.responseCode)) {
         this.logHttpError(HEALTH_URL_WITH_QUERY, response.responseCode, bodyStr ?? '');
         return null;
@@ -272,7 +492,8 @@ class PlantIdService {
         return null;
       }
 
-      return this.parseHealthResponse(parsed);
+      //  添加 await
+      return await this.parseHealthResponse(parsed);
     } catch (error) {
       const err = error as BusinessError;
       console.error('Plant.id health_assessment 请求异常:', err.message);
@@ -380,11 +601,11 @@ class PlantIdService {
   /**
    * 解析健康评估：优先 v3（result.is_healthy / result.disease），否则尝试旧版字段
    */
-  private parseHealthResponse(root: Record<string, Object>): DiagnosisResult {
+  private async parseHealthResponse(root: Record<string, Object>): Promise<DiagnosisResult> {
     const env = root as V3HealthAssessmentEnvelope;
     if (env.result && (env.result.is_healthy !== undefined || env.result.disease !== undefined ||
       env.result.classification !== undefined)) {
-      return this.parseHealthResponseV3(env);
+      return await this.parseHealthResponseV3(env);
     }
     const legacy = root as LegacyHealthAssessmentResponse;
     if (legacy.health_assessment) {
@@ -394,33 +615,46 @@ class PlantIdService {
     return this.defaultDiagnosis();
   }
 
-  private parseHealthResponseV3(env: V3HealthAssessmentEnvelope): DiagnosisResult {
+  private async parseHealthResponseV3(env: V3HealthAssessmentEnvelope): Promise<DiagnosisResult> {
     const out = this.defaultDiagnosis();
     const payload = env.result;
     if (!payload) {
+      console.warn('V3响应: payload为空');
       return out;
     }
 
     if (payload.is_healthy !== undefined) {
       const binary = payload.is_healthy.binary;
       out.isHealthy = binary !== undefined ? binary : true;
+      console.info(`健康状态: ${out.isHealthy}`);
     }
 
     if (payload.classification?.suggestions && payload.classification.suggestions.length > 0) {
       const top = payload.classification.suggestions[0];
       const cn = top.details?.common_names;
       out.plantName = (cn && cn.length > 0) ? cn[0] : (top.name ?? '未知');
+      console.info(`植物名称: ${out.plantName}`);
     }
 
     if (!out.isHealthy && payload.disease?.suggestions && payload.disease.suggestions.length > 0) {
       const s = payload.disease.suggestions[0];
       const d = s.details;
-      const local = d?.local_name ?? s.name ?? '未知病害';
-      out.diseaseName = local;
-      out.diseaseDescription = d?.description ?? '';
-      out.treatmentAdvice = this.formatTreatmentObject(d?.treatment);
-      out.cause = d?.cause ?? '';
+      const englishName = d?.local_name ?? s.name ?? '未知病害';
+      console.info(`病害名称: ${out.diseaseName}`);
+      const knowledge = getDiseaseKnowledge(englishName);
+      //  使用 await 等待异步结果
+      const chineseName = await translateDiseaseName(englishName);
+      out.diseaseName = chineseName;
+      out.diseaseDescription = d?.description ?? knowledge.description;
+
+      // 修复：治疗建议 - 优先使用API返回的，如果为空则使用本地知识库
+      const apiTreatment = this.formatTreatmentObject(d?.treatment);
+      out.treatmentAdvice = (apiTreatment && apiTreatment.trim() !== '') ? apiTreatment : knowledge.treatment;
+
+      out.cause = d?.cause ??knowledge.cause;
+
       out.confidence = s.probability ?? 0;
+      console.info(`病害描述: ${out.diseaseDescription.substring(0, 50)}...`);
     }
 
     return out;
@@ -441,9 +675,9 @@ class PlantIdService {
     if (!out.isHealthy && diseases && diseases.length > 0) {
       const disease = diseases[0];
       out.diseaseName = disease.local_name ?? disease.name ?? '未知病害';
-      out.diseaseDescription = disease.description ?? '';
-      out.treatmentAdvice = disease.treatment ?? '';
-      out.cause = disease.cause ?? '';
+      out.diseaseDescription = disease.description ?? '暂无详细描述';
+      out.treatmentAdvice = disease.treatment ?? '暂无治疗方案';
+      out.cause = disease.cause ?? '环境因素或病原体感染';
       out.confidence = disease.probability ?? 0;
     }
 

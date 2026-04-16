@@ -16,7 +16,7 @@ import {Rule} from './Rule'
 import {Setting} from './Setting'
 import {Internet} from './Internet'
 import { AIidentify } from './AIidentify';
-import {AIResult} from './AIResult'
+
 import {Monitor} from './Monitor'
 
 
@@ -416,9 +416,6 @@ export struct Index {
     }
     else if (name==='AIidentify') {
      AIidentify({params:param})
-    }
-    else if (name==='AIResult') {
-      AIResult({params:param})
     }
     else if (name==='Monitor') {
       Monitor({params:param})

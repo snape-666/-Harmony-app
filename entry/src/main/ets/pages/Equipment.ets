@@ -130,6 +130,28 @@ interface CloudDataResponse {
 }
 // ==================== 硬件接口服务类 ====================
 
+interface GeneratedTypeLiteralInterface_2 {
+  brightness: number;
+  red: number;
+  green: number;
+  blue: number;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+}
+
+interface GeneratedTypeLiteralInterface_3 {
+  Brightness: number;
+  Red: number;
+  Green: number;
+  Blue: number;
+  LightStartHour?: number;
+  LightStartMinute?: number;
+  LightEndHour?: number;
+  LightEndMinute?: number;
+}
+
 class HardwareService {
   private deviceIp: string;
   private deviceId: string;
@@ -218,10 +240,18 @@ class HardwareService {
   /**
    * 更新光源设置（亮度百分比自动转换）
    */
-  async updateLightSetting(setting: LightSetting): Promise<boolean> {
+  async updateLightSetting(setting: LightSetting,startHour?:number,startMinute?:number,endHour?:number,endMinute?:number): Promise<boolean> {
     try {
       // brightness已经是百分比值（0-100），直接传递
-      const formData = `Brightness=${setting.brightness}&Red=${setting.red}&Green=${setting.green}&Blue=${setting.blue}&LightDuration=${setting.lightDuration}`;
+      let formData = `Brightness=${setting.brightness}&Red=${setting.red}&Green=${setting.green}&Blue=${setting.blue}&LightDuration=${setting.lightDuration}`;
+
+      // ✅ 新增：如果传入了开始/结束时间，则添加到请求中
+      if (startHour !== undefined && startMinute !== undefined) {
+        formData += `&LightStartHour=${startHour}&LightStartMinute=${startMinute}`;
+      }
+      if (endHour !== undefined && endMinute !== undefined) {
+        formData += `&LightEndHour=${endHour}&LightEndMinute=${endMinute}`;
+      }
       const url = `http://${this.deviceIp}/.netlify/functions/device/${this.deviceId}/light`;
       console.info('[硬件接口] 更新光源设置:', url, formData);
 
@@ -246,7 +276,40 @@ class HardwareService {
       return false;
     }
   }
+  // ✅ 新增：获取完整光源设置（包含开始/结束时间）
+  async fetchFullLightSetting(): Promise<GeneratedTypeLiteralInterface_2 | null> {
+    try {
+      const url = `http://${this.deviceIp}/.netlify/functions/device/${this.deviceId}/light`;
+      console.info('[硬件接口] 获取完整光源设置:', url);
 
+      const httpRequest = http.createHttp();
+      const response = await httpRequest.request(url, {
+        method: http.RequestMethod.GET,
+        connectTimeout: 10000,
+        readTimeout: 10000
+      });
+
+      if (response.responseCode === 200) {
+        const data = JSON.parse(response.result as string) as GeneratedTypeLiteralInterface_3;
+        httpRequest.destroy();
+        return {
+          brightness: data.Brightness,
+          red: data.Red,
+          green: data.Green,
+          blue: data.Blue,
+          startHour: data.LightStartHour ?? 20,
+          startMinute: data.LightStartMinute ?? 0,
+          endHour: data.LightEndHour ?? 6,
+          endMinute: data.LightEndMinute ?? 0
+        };
+      }
+      httpRequest.destroy();
+      return null;
+    } catch (error) {
+      console.error('[硬件接口] 获取完整光源设置失败:', JSON.stringify(error));
+      return null;
+    }
+  }
   /**
    * 获取设备状态
    */

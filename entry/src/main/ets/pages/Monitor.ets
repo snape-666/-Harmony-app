@@ -24,7 +24,7 @@ export struct Monitor {
       if (!this.isError) {
         this.refreshKey++;
       }
-    }, 50); // 50ms ≈ 20帧/秒
+    }, 100); // 50ms ≈ 20帧/秒
   }
 
   aboutToDisappear() {
@@ -84,6 +84,9 @@ Column() {
       .fileAccess(false)
       .onlineImageAccess(true)
       .domStorageAccess(true)
+      .zoomAccess(true)
+      .overviewModeAccess(false)  // 禁用概览模式，允许自由缩放
+      .initialScale(100)  // 初始缩放100%
       .onPageEnd(() => {
         console.log('视频加载成功');
         promptAction.openToast({
@@ -116,6 +119,22 @@ Column() {
     .alignItems(HorizontalAlign.Center)
   }
 }
+.width('100%')
+.layoutWeight(1)  // ✅ 占满剩余空间
+.backgroundColor('#000000')
+.clip(true)  // ✅ 裁剪超出部分
+
+        // 控制说明
+        Row() {
+          Text('双指可缩放画面 | 拖动可移动视角')
+            .fontSize('12vp')
+            .fontColor('#94A3B8')
+        }
+        .width('100%')
+        .height('36vp')
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor('#f1f5f9')
+
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       }.width('100%')
       .height('100%')
