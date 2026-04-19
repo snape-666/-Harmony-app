@@ -10,6 +10,8 @@ import { CircleShape } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit'
 import { preferences } from '@kit.ArkData'
 import { fileIo } from '@kit.CoreFileKit'
+import {About} from './About'
+import {Notice} from './Notice'
 
 
 interface SettingItem {
@@ -68,7 +70,7 @@ export struct Setting {
       title: '通知设置',
       status: '',
       iconBgColor: '#1a22c55e',
-      page: 'Notification'
+      page: 'Notice'
     }
   ];
   @State settingList2: SettingItem2[] = [
@@ -77,7 +79,7 @@ export struct Setting {
       title: '语言',
       status: '中文(CN)',
       iconBgColor: '#F1F5F9',
-      page: 'Internet'
+      page: 'Words'
     },
     {
       icon: $r('app.media.about'),
@@ -462,7 +464,7 @@ export struct Setting {
             .height('65vp')
             .onClick(() => {
               console.log(`点击了第${index + 1}项：${item.title}`);
-              NavigationManager.getInstance().push(item.page, { from: Setting })
+              NavigationManager.getInstance().push(item.page, { from: Setting,username:this.userName })
             })
 
             if (index < this.settingList.length - 1) {

@@ -16,9 +16,10 @@ import {Rule} from './Rule'
 import {Setting} from './Setting'
 import {Internet} from './Internet'
 import { AIidentify } from './AIidentify';
-
 import {Monitor} from './Monitor'
-
+import { About } from './About';
+import { Notice } from './Notice';
+import {AITalk} from './AITalk'
 
 interface swiperItem{
   id:number,
@@ -420,7 +421,15 @@ export struct Index {
     else if (name==='Monitor') {
       Monitor({params:param})
     }
-
+    else if (name==='About') {
+      About({params:param})
+    }
+    else if (name==='Notice') {
+      Notice({params:param})
+    }
+    else if (name==='AITalk') {
+      AITalk({params:param})
+    }
   }
 }
 

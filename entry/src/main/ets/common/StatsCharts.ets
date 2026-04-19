@@ -1,4 +1,3 @@
-import { Canvas, CanvasRenderingContext2D, RenderingContextSettings } from '@kit.ArkUI';
 
 function sanitizeSeries(values: number[]): number[] {
   if (values.length === 0) {
@@ -55,8 +54,10 @@ export struct StatAreaLineChart {
         this.draw(300, this.chartHeight);
       })
       .onAreaChange((oldVal: Area, newVal: Area) => {
+        const width: number = newVal.width as number;
+        const height: number = newVal.height as number;
         if (newVal.width > 1 && newVal.height > 1) {
-          this.draw(newVal.width, newVal.height);
+          this.draw(width, height);
         }
       });
   }
@@ -64,7 +65,9 @@ export struct StatAreaLineChart {
   private draw(w: number, h: number): void {
     const ctx = this.context;
     const vals = sanitizeSeries(this.values.length > 0 ? this.values : [0]);
-    const [minV, maxV] = minMax(vals);
+    const minMaxResult: [number, number] = minMax(vals);
+    const minV: number = minMaxResult[0];
+    const maxV: number = minMaxResult[1];
     const padL = 8;
     const padR = 8;
     const padT = 6;
@@ -91,7 +94,7 @@ export struct StatAreaLineChart {
     ctx.lineTo(xAt(n - 1), h - padB);
     ctx.lineTo(xAt(0), h - padB);
     ctx.closePath();
-    const g = ctx.createLinearGradient(0, padT, 0, h - padB);
+    const g: CanvasGradient = ctx.createLinearGradient(0, padT, 0, h - padB);
     g.addColorStop(0, 'rgba(34,197,94,0.35)');
     g.addColorStop(1, 'rgba(34,197,94,0.02)');
     ctx.fillStyle = g;
@@ -123,8 +126,10 @@ export struct StatSparkLineChart {
         this.draw(200, this.chartHeight);
       })
       .onAreaChange((oldVal: Area, newVal: Area) => {
+        const width: number = newVal.width as number;
+        const height: number = newVal.height as number;
         if (newVal.width > 1 && newVal.height > 1) {
-          this.draw(newVal.width, newVal.height);
+          this.draw(width,height);
         }
       });
   }
@@ -132,7 +137,9 @@ export struct StatSparkLineChart {
   private draw(w: number, h: number): void {
     const ctx = this.context;
     const vals = sanitizeSeries(this.values.length > 0 ? this.values : [0]);
-    const [minV, maxV] = minMax(vals);
+    const minMaxResult: [number, number] = minMax(vals);
+    const minV: number = minMaxResult[0];
+    const maxV: number = minMaxResult[1];
     const padL = 6;
     const padR = 6;
     const padT = 4;
@@ -178,8 +185,10 @@ export struct StatBarSparkChart {
         this.draw(160, this.chartHeight);
       })
       .onAreaChange((oldVal: Area, newVal: Area) => {
+        const width: number = newVal.width as number;
+        const height: number = newVal.height as number;
         if (newVal.width > 1 && newVal.height > 1) {
-          this.draw(newVal.width, newVal.height);
+          this.draw(width, height);
         }
       });
   }

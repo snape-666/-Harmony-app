@@ -8,6 +8,7 @@ import {AIidentify} from './AIidentify'
 import { http } from '@kit.NetworkKit'
 import { webview } from '@kit.ArkWeb'
 import { MultiNavigation, promptAction } from '@kit.ArkUI'
+import { GlobalStateService } from '../service/GlobalStateService'
 
 // 定义传感器数据类型
 interface SensorData {
@@ -24,7 +25,7 @@ interface SensorData {
 interface ApiResponse {
   success: boolean;
   count: number;
-  data: Record<string, SensorData>;
+  data: Record<string, Record<string, SensorData>>;
 }
 // 定义卡片数据类型
 interface CardData {
@@ -58,6 +59,8 @@ export struct Yibiaopan {
   @State sensorDataList: SensorData[] = [];
   // 在组件中添加状态变量
   @State isDeviceRunning: boolean = true;  // 设备运行状态
+  private globalStateService: GlobalStateService = GlobalStateService.getInstance();
+  private isListening: boolean = false;
   private readonly API_URL: string = 'https://guet-farm.netlify.app/.netlify/functions/getData';
   private refreshTimer?: number;
   /** 避免首次 onPageShow 与 aboutToAppear 重复拉取传感器 */
@@ -97,6 +100,11 @@ export struct Yibiaopan {
     console.log('Yibiaopan接收参数',JSON.stringify(this.params));
     this.loginUsername = this.params['username'] as string || '';
     console.log('Yibiaopan接收到的用户名:', this.loginUsername);
+    // 从 GlobalStateService 加载设备状态
+    this.loadDeviceStateFromGlobal();
+
+    //  监听全局状态变化
+    this.listenToGlobalChanges();
     this.fetchSensorData();
     // 每30秒自动刷新数据
     this.startAutoRefresh();
@@ -126,7 +134,20 @@ export struct Yibiaopan {
     this.fetchSensorData();
     this.startAutoRefresh();
   }
+  //从全局加载设备状态
+  private loadDeviceStateFromGlobal(): void {
+    const globalState = this.globalStateService.getState();
+    this.isDeviceRunning = globalState.isDeviceOn;
+    console.log('[Yibiaopan] 从全局加载设备状态:', this.isDeviceRunning);
+  }
 
+  //监听全局状态变化
+  private listenToGlobalChanges(): void {
+    this.globalStateService.addListener((newState) => {
+      console.log('[Yibiaopan] 收到全局状态变化, isDeviceOn:', newState.isDeviceOn);
+      this.isDeviceRunning = newState.isDeviceOn;
+    });
+  }
   private stopSensorRefresh(): void {
     if (this.refreshTimer !== undefined) {
       clearInterval(this.refreshTimer);
@@ -194,12 +215,34 @@ export struct Yibiaopan {
         console.log('解析后的数据:', JSON.stringify(outerResult));
 
         if (outerResult.success && outerResult.data) {
-          // 获取所有数据点
-          const dataPoints = Object.values(outerResult.data);
-          this.sensorDataList = dataPoints;
+          // 关键修改：处理两层嵌套的数据结构
+          const allSensorData: SensorData[] = [];
+          // 遍历所有日期
+          Object.values(outerResult.data).forEach(dateData => {
+            // 遍历每个日期下的所有时间点
+            Object.values(dateData).forEach(sensorItem => {
+              if (sensorItem && typeof sensorItem === 'object') {
+                // 确保数据包含日期字段（如果没有，尝试从外层获取）
+                if (!sensorItem.date && outerResult.data) {
+                  // 这里可以根据需要添加日期字段
+                }
+                allSensorData.push(sensorItem);
+              }
+            });
+          });
+
+          // 按时间排序（假设有time字段）
+          allSensorData.sort((a, b) => {
+            if (a.time && b.time) {
+              return a.time.localeCompare(b.time);
+            }
+            return 0;
+          });
+
+          this.sensorDataList = allSensorData;
 
           // 获取最新的一条数据（最后一条）
-          const latestData = dataPoints[dataPoints.length - 1];
+          const latestData = allSensorData[allSensorData.length - 1];
 
           if (latestData) {
             this.updateUIWithData(latestData);
@@ -358,7 +401,7 @@ export struct Yibiaopan {
                 .width('110vp')
                 .height('25vp')
                 .borderRadius(20)
-                .backgroundColor('#3313ec5b')
+                .backgroundColor(this.isDeviceRunning ?'#3313ec5b':'#FEE2E2')
                 .justifyContent(FlexAlign.SpaceEvenly)
 
                 Row() {

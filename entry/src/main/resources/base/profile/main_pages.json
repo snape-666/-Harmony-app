@@ -18,6 +18,9 @@
     "pages/Rule",
     "pages/Internet",
     "pages/AIidentify",
-    "pages/Monitor"
+    "pages/Monitor",
+    "pages/About",
+    "pages/Notice",
+    "pages/AITalk"
   ]
 }

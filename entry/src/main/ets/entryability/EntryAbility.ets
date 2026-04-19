@@ -2,28 +2,25 @@ import { AbilityConstant, ConfigurationConstant, UIAbility, Want } from '@kit.Ab
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { window } from '@kit.ArkUI';
 import { AlarmManager } from '../common/AlarmManager';
-import { DeviceStateService } from '../common/DeviceStateService';
 import { TaskService } from '../service/TaskService';
+import { GlobalStateService } from '../service/GlobalStateService';
+
 
 const DOMAIN = 0x0000;
 
 export default class EntryAbility extends UIAbility {
-  onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
+  async onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): Promise<void> {
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     } catch (err) {
       hilog.error(DOMAIN, 'testTag', 'Failed to set colorMode. Cause: %{public}s', JSON.stringify(err));
     }
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onCreate');
-    // 初始化设备状态服务
-    const stateService = DeviceStateService.getInstance();
-    stateService.setContext(this.context);
     // 初始化任务服务
     const taskService = TaskService.getInstance();
     taskService.setContext(this.context);
-
-    // 恢复保存的状态
-    stateService.getState();
+    // ✅ 初始化全局状态服务
+    await GlobalStateService.getInstance().init(this.context);
   }
 
   onDestroy(): void {

@@ -26,7 +26,13 @@ export struct AllHistory {
 
 
         Scroll(){
-
+          Column(){
+            this.cardList('app.media.gwater','自动灌溉','昨天,08:30AM-2.2L','成功')
+            this.cardList('app.media.put','手动增压','两天前,04:15PM-0.5L','成功' )
+          }
+          .align(Alignment.TopStart)
+          .height('100%')
+          .width('100%')
         }
         .width('100%')
         .layoutWeight(1)
@@ -62,7 +68,7 @@ export struct AllHistory {
     .backgroundColor(Color.White)
     .borderRadius(20)
     .shadow({
-      radius: 100,
+      radius:50,
       color: '#3313ec5b',
       offsetX: 0,
       offsetY: 0

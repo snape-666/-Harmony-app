@@ -1,28 +1,29 @@
 import { NavigationManager } from '../common/NavigationManager';
 import { http } from '@kit.NetworkKit';
 import { promptAction } from '@kit.ArkUI';
+import { GlobalState, GlobalStateService } from '../service/GlobalStateService';
+
 // 活动日志接口
 interface ActivityLog {
-  id: string;           // 唯一标识
-  content: string;      // 日志内容
-  time: string;         // 时间戳
-  dotColor: string;     // 圆点颜色（#3B82F6=蓝色正常, #F59E0B=黄色异常）
-  timestamp: number;    // 用于排序的时间戳
+  id: string;
+  content: string;
+  time: string;
+  dotColor: string;
+  timestamp: number;
 }
-// 日志项接口
+
 interface LogItem {
   content: string;
   time: string;
   dotColor: string;
 }
 
-// 云端传感器数据响应接口
 interface CloudDataResponse {
   success: boolean;
   count: number;
   data: Record<string, string>;
 }
-// 硬件更新阈值响应接口
+
 interface HardwareUpdateThresholdsResponse {
   status: string;
   Co2Threshold?: number;
@@ -33,7 +34,6 @@ interface HardwareUpdateThresholdsResponse {
   DeviceID?: string;
 }
 
-// 硬件更新目标值响应接口
 interface HardwareUpdateTargetsResponse {
   status: string;
   Co2Target?: number;
@@ -42,7 +42,6 @@ interface HardwareUpdateTargetsResponse {
   DeviceID?: string;
 }
 
-// 硬件更新光源响应接口
 interface HardwareUpdateLightResponse {
   status: string;
   Brightness?: number;
@@ -52,7 +51,7 @@ interface HardwareUpdateLightResponse {
   LightDuration?: number;
   DeviceID?: string;
 }
-// 云端传感器记录接口
+
 interface CloudSensorRecord {
   air_humidity: string;
   soil_humidity: string;
@@ -64,7 +63,6 @@ interface CloudSensorRecord {
   time: string;
 }
 
-// 硬件阈值响应接口
 interface HardwareThresholdsResponse {
   Co2Threshold: number;
   SoilTempThreshold: number;
@@ -74,7 +72,6 @@ interface HardwareThresholdsResponse {
   DeviceID: string;
 }
 
-// 硬件目标值响应接口
 interface HardwareTargetsResponse {
   Co2Target: number;
   SoilTempTarget: number;
@@ -82,7 +79,6 @@ interface HardwareTargetsResponse {
   DeviceID: string;
 }
 
-// 硬件设备状态响应接口
 interface HardwareStateResponse {
   WaterState: boolean;
   LightState: boolean;
@@ -91,7 +87,6 @@ interface HardwareStateResponse {
   status?: string;
 }
 
-// 硬件指令响应接口
 interface HardwareCommandResponse {
   status: string;
   WaterState: boolean;
@@ -101,37 +96,33 @@ interface HardwareCommandResponse {
   DeviceID: string;
 }
 
-// 设备配置响应接口（后端）
 interface DeviceConfigResponse {
   electricity: string;
   waterVolume: string;
   deviceID: string;
 }
 
-// 阈值数据接口
 interface ThresholdData {
-  co2Threshold: number;           // CO2浓度阈值
-  soilTempThreshold: number;      // 土壤温度阈值
-  soilHumidityThreshold: number;  // 土壤湿度阈值
-  lightThreshold: number;         // 光照阈值
-  waterVolumeThreshold: number;   // 水箱水量阈值
+  co2Threshold: number;
+  soilTempThreshold: number;
+  soilHumidityThreshold: number;
+  lightThreshold: number;
+  waterVolumeThreshold: number;
 }
 
-// 目标值数据接口
 interface TargetData {
-  co2Target: number;              // CO2浓度目标值
-  soilTempTarget: number;         // 土壤温度目标值
-  soilHumidityTarget: number;     // 土壤湿度目标值
+  co2Target: number;
+  soilTempTarget: number;
+  soilHumidityTarget: number;
 }
 
-// 传感器数据接口
 interface SensorData {
-  soilHumidity: number;     // 土壤湿度 (%)
-  light: number;            // 光照强度 (lx)
-  co2: number;              // CO2浓度 (ppm)
-  waterVolume: number;      // 水箱水量 (L)
+  soilHumidity: number;
+  light: number;
+  co2: number;
+  waterVolume: number;
 }
-// 新增：补光时间设置接口
+
 interface LightTimeSetting {
   brightness: number;
   red: number;
@@ -143,7 +134,7 @@ interface LightTimeSetting {
   endHour?: number;
   endMinute?: number;
 }
-// ==================== 硬件接口服务类 ====================
+
 interface GeneratedTypeLiteralInterface_1 {
   brightness: number;
   red: number;
@@ -179,9 +170,6 @@ class HardwareService {
     this.deviceId = deviceId;
   }
 
-  /**
-   * 获取阈值数据
-   */
   async fetchThresholds(): Promise<ThresholdData | null> {
     try {
       const url = `http://${this.deviceIp}/.netlify/functions/device/${this.deviceId}/thresholds`;
@@ -213,9 +201,6 @@ class HardwareService {
     }
   }
 
-  /**
-   * 更新阈值数据
-   */
   async updateThresholds(thresholds: Partial<ThresholdData>): Promise<boolean> {
     try {
       const formData: string[] = [];
@@ -238,7 +223,7 @@ class HardwareService {
       });
 
       if (response.responseCode === 200) {
-        const data = JSON.parse(response.result as string)as HardwareUpdateThresholdsResponse;
+        const data = JSON.parse(response.result as string) as HardwareUpdateThresholdsResponse;
         httpRequest.destroy();
         return data.status === 'success';
       }
@@ -250,9 +235,6 @@ class HardwareService {
     }
   }
 
-  /**
-   * 获取目标值数据
-   */
   async fetchTargets(): Promise<TargetData | null> {
     try {
       const url = `http://${this.deviceIp}/.netlify/functions/device/${this.deviceId}/targets`;
@@ -282,9 +264,6 @@ class HardwareService {
     }
   }
 
-  /**
-   * 更新目标值数据
-   */
   async updateTargets(targets: Partial<TargetData>): Promise<boolean> {
     try {
       const formData: string[] = [];
@@ -305,7 +284,7 @@ class HardwareService {
       });
 
       if (response.responseCode === 200) {
-        const data = JSON.parse(response.result as string)as HardwareUpdateTargetsResponse;
+        const data = JSON.parse(response.result as string) as HardwareUpdateTargetsResponse;
         httpRequest.destroy();
         return data.status === 'success';
       }
@@ -316,9 +295,7 @@ class HardwareService {
       return false;
     }
   }
-  /**
-   * 获取完整光源设置（包含开始/结束时间）
-   */
+
   async fetchFullLightSetting(): Promise<GeneratedTypeLiteralInterface_1 | null> {
     try {
       const url = `http://${this.deviceIp}/.netlify/functions/device/${this.deviceId}/light`;
@@ -353,9 +330,6 @@ class HardwareService {
     }
   }
 
-  /**
-   * 更新光源设置（包含开始/结束时间）
-   */
   async updateLightSettingWithTime(
     brightness: number,
     red: number,
@@ -392,9 +366,7 @@ class HardwareService {
       return false;
     }
   }
-  /**
-   * 获取设备状态
-   */
+
   async fetchDeviceState(): Promise<HardwareStateResponse | null> {
     try {
       const url = `http://${this.deviceIp}/.netlify/functions/device/${this.deviceId}/state`;
@@ -420,9 +392,6 @@ class HardwareService {
     }
   }
 
-  /**
-   * 发送控制指令
-   */
   async sendCommand(command: string): Promise<HardwareCommandResponse | null> {
     try {
       const formData = `cmd=${command}`;
@@ -451,9 +420,6 @@ class HardwareService {
     }
   }
 
-  /**
-   * 更新光源设置（用于夜间照明自动开灯）
-   */
   async updateLightSetting(brightness: number, red: number, green: number, blue: number): Promise<boolean> {
     try {
       const formData = `Brightness=${brightness}&Red=${red}&Green=${green}&Blue=${blue}&LightDuration=30`;
@@ -470,7 +436,7 @@ class HardwareService {
       });
 
       if (response.responseCode === 200) {
-        const data = JSON.parse(response.result as string)as HardwareUpdateLightResponse;
+        const data = JSON.parse(response.result as string) as HardwareUpdateLightResponse;
         httpRequest.destroy();
         return data.status === 'success';
       }
@@ -483,15 +449,10 @@ class HardwareService {
   }
 }
 
-// ==================== 后端云平台服务类 ====================
-
 class CloudService {
   private static readonly SENSOR_API_URL = 'https://guet-farm.netlify.app/.netlify/functions/getData';
   private static readonly CONFIG_API_URL = 'https://guet-farm.netlify.app/.netlify/functions/cfg';
 
-  /**
-   * 获取传感器数据（土壤湿度、光照强度、CO2浓度）
-   */
   async fetchSensorData(): Promise<SensorData | null> {
     try {
       console.info('[云平台] 获取传感器数据:', CloudService.SENSOR_API_URL);
@@ -517,7 +478,6 @@ class CloudService {
         return null;
       }
 
-      // 获取最新的一条数据
       const keys = Object.keys(outerData.data).sort();
       const latestKey = keys[keys.length - 1];
       const rawData = JSON.parse(outerData.data[latestKey]) as CloudSensorRecord;
@@ -531,7 +491,7 @@ class CloudService {
         soilHumidity: parseValue(rawData.soil_humidity),
         light: parseValue(rawData.light),
         co2: parseValue(rawData.co2),
-        waterVolume: 0  // 从cfg接口获取
+        waterVolume: 0
       };
 
       console.log(`[云平台] 传感器数据: 土壤湿度=${sensorData.soilHumidity}%, 光照=${sensorData.light}lx, CO2=${sensorData.co2}ppm`);
@@ -542,9 +502,6 @@ class CloudService {
     }
   }
 
-  /**
-   * 获取设备配置（水箱水量）
-   */
   async fetchDeviceConfig(deviceId: string): Promise<number | null> {
     try {
       const url = `${CloudService.CONFIG_API_URL}?deviceID=${deviceId}`;
@@ -581,76 +538,64 @@ export struct Rule {
   @State isCheck1: boolean = false;
   @State isCheck2: boolean = false;
   @State isCheck3: boolean = false;
-  @State showLightTimeSettingDialog: boolean = false;  // 时间设置弹窗显示
-  @State allLogs: ActivityLog[] = [];     // 所有日志
-  @State displayLogs: ActivityLog[] = []; // 当前显示的日志（前3条或全部）
-  @State showAllLogs: boolean = false;    // 是否显示全部日志
-@State logList:LogItem[]=[
-  { content: "自动灌溉系统启动", time: "14:20 PM", dotColor: "#3B82F6" },
-  { content: "自动灌溉终止", time: "14:35 PM", dotColor: "#3B82F6" },
-  { content: "B区域检测到活动", time: "11:04 AM", dotColor: "#F59E0B" },
-];
-  // 在 Rule 组件中添加状态变量
+  @State showLightTimeSettingDialog: boolean = false;
+  @State allLogs: ActivityLog[] = [];
+  @State displayLogs: ActivityLog[] = [];
+  @State showAllLogs: boolean = false;
+  @State logList: LogItem[] = [
+    { content: "自动灌溉系统启动", time: "14:20 PM", dotColor: "#3B82F6" },
+    { content: "自动灌溉终止", time: "14:35 PM", dotColor: "#3B82F6" },
+    { content: "B区域检测到活动", time: "11:04 AM", dotColor: "#F59E0B" },
+  ];
   @State showLightTimePicker: boolean = false;
-  @State showTimePickerDialog: boolean = false;  // 时间滚动选择器弹窗
+  @State showTimePickerDialog: boolean = false;
   @State lightStartHour: number = 20;
   @State lightStartMinute: number = 0;
   @State lightEndHour: number = 6;
   @State lightEndMinute: number = 0;
   @State currentLightSetting: LightTimeSetting | null = null;
-  // 运行中的规则计数
   @State runningCount: number = 3;
-  // ========== 阈值数据 ==========
   @State thresholds: ThresholdData = {
-    co2Threshold: 500,           // CO2浓度阈值（ppm）
-    soilTempThreshold: 35,       // 土壤温度阈值
-    soilHumidityThreshold: 30,   // 土壤湿度阈值（%）
-    lightThreshold: 20,          // 光照阈值（lx）
-    waterVolumeThreshold: 200    // 水箱水量阈值（L）
+    co2Threshold: 500,
+    soilTempThreshold: 35,
+    soilHumidityThreshold: 30,
+    lightThreshold: 20,
+    waterVolumeThreshold: 200
   };
-
-  // ========== 目标值数据 ==========
   @State targets: TargetData = {
-    co2Target: 400,              // CO2目标值（低于此值关闭换气）
-    soilTempTarget: 25,          // 土壤温度目标值
-    soilHumidityTarget: 60       // 土壤湿度目标值（高于此值停止灌溉）
+    co2Target: 400,
+    soilTempTarget: 25,
+    soilHumidityTarget: 60
   };
-
-  // ========== 传感器数据 ==========
   @State sensorData: SensorData = {
     soilHumidity: 0,
     light: 0,
     co2: 0,
     waterVolume: 0
   };
+  @State waterState: boolean = false;
+  @State lightState: boolean = false;
+  @State airState: boolean = false;
 
-  // ========== 设备状态 ==========
-  @State waterState: boolean = false;   // 水泵状态
-  @State lightState: boolean = false;   // 补光状态
-  @State airState: boolean = false;     // 换气状态
-
-  // ========== 服务实例 ==========
   private hardwareService: HardwareService = new HardwareService();
   private cloudService: CloudService = new CloudService();
+  private globalStateService: GlobalStateService = GlobalStateService.getInstance();
+  private isSyncingFromGlobal: boolean = false;
 
-  // 定时器
   private sensorTimer: number = -1;
   private autoControlTimer: number = -1;
-  // 时间选择器数据源
   private hourList: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
   private minuteList: number[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59];
-  private tempStartHour: number = 20;
-  private tempStartMinute: number = 0;
-  private tempEndHour: number = 6;
-  private tempEndMinute: number = 0;
+  @State tempStartHour: number = 20;
+  @State tempStartMinute: number = 0;
+  @State tempEndHour: number = 6;
+  @State tempEndMinute: number = 0;
   private timePickerType: 'start' | 'end' = 'start';
-
-  // 时间选择器 Scroller
   private startHourScroller: Scroller = new Scroller();
   private startMinuteScroller: Scroller = new Scroller();
   private endHourScroller: Scroller = new Scroller();
   private endMinuteScroller: Scroller = new Scroller();
-  // 获取当前补光设置
+
   async fetchCurrentLightSetting(): Promise<void> {
     const setting = await this.hardwareService.fetchFullLightSetting();
     if (setting) {
@@ -669,8 +614,7 @@ export struct Rule {
         endHour: setting.endHour,
         endMinute: setting.endMinute
       };
-    }else {
-      // ✅ 添加 else 分支，设置默认值
+    } else {
       this.currentLightSetting = {
         brightness: 75,
         red: 255,
@@ -681,9 +625,7 @@ export struct Rule {
     }
   }
 
-  // 保存补光时间设置
   async saveLightTimeSetting(): Promise<void> {
-    // 先获取当前设备页面的补光设置
     const lightSetting = await this.hardwareService.fetchFullLightSetting();
     const brightness = lightSetting?.brightness ?? 75;
     const red = lightSetting?.red ?? 255;
@@ -697,7 +639,12 @@ export struct Rule {
     );
 
     if (success) {
-      // 直接使用从硬件获取的 brightness, red, green, blue，不依赖 currentLightSetting
+      await this.globalStateService.updateTimeSetting(
+        this.lightStartHour,
+        this.lightStartMinute,
+        this.lightEndHour,
+        this.lightEndMinute
+      );
       this.showGlobalToast(`补光时间已设置: ${this.formatTime(this.lightStartHour, this.lightStartMinute)}-${this.formatTime(this.lightEndHour, this.lightEndMinute)}\n当前亮度:${brightness}% RGB:(${red},${green},${blue})`);
       this.addActivityLog(`夜间照明时间已更新: ${this.formatTime(this.lightStartHour, this.lightStartMinute)}-${this.formatTime(this.lightEndHour, this.lightEndMinute)}`, true);
     } else {
@@ -705,12 +652,10 @@ export struct Rule {
     }
   }
 
-  // 格式化时间显示
   private formatTime(hour: number, minute: number): string {
     return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
   }
 
-  // 显示开始时间选择器
   showStartTimePicker(): void {
     this.tempStartHour = this.lightStartHour;
     this.tempStartMinute = this.lightStartMinute;
@@ -718,7 +663,6 @@ export struct Rule {
     this.showLightTimePicker = true;
   }
 
-  // 显示结束时间选择器
   showEndTimePicker(): void {
     this.tempEndHour = this.lightEndHour;
     this.tempEndMinute = this.lightEndMinute;
@@ -726,7 +670,6 @@ export struct Rule {
     this.showLightTimePicker = true;
   }
 
-  // 确认时间选择
   confirmTimePicker(): void {
     if (this.timePickerType === 'start') {
       this.lightStartHour = this.tempStartHour;
@@ -737,11 +680,7 @@ export struct Rule {
     }
     this.showLightTimePicker = false;
   }
-  /**
-   * 添加活动日志
-   * @param content 日志内容
-   * @param isNormal 是否为正常状态（true=蓝色，false=黄色异常）
-   */
+
   private addActivityLog(content: string, isNormal: boolean): void {
     const now = new Date();
     const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -755,42 +694,31 @@ export struct Rule {
       timestamp: timestamp
     };
 
-    // 添加到列表头部（最新在上）
     this.allLogs = [newLog, ...this.allLogs];
 
-    // 限制日志数量最多100条
     if (this.allLogs.length > 100) {
       this.allLogs = this.allLogs.slice(0, 100);
     }
 
-    // 更新显示的日志
     this.updateDisplayLogs();
   }
 
-  /**
-   * 更新显示的日志列表
-   */
   private updateDisplayLogs(): void {
     if (this.showAllLogs) {
-      this.displayLogs = [...this.allLogs];
+      this.displayLogs = this.allLogs.slice();
     } else {
       this.displayLogs = this.allLogs.slice(0, 3);
     }
   }
 
-  /**
-   * 切换显示全部/前3条
-   */
   private toggleShowAllLogs(): void {
     this.showAllLogs = !this.showAllLogs;
     this.updateDisplayLogs();
   }
-  // ========== 生命周期 ==========
 
   aboutToAppear(): void {
     console.log('自动化规则页面初始化');
 
-    // 获取设备信息
     if (this.params['deviceId']) {
       this.hardwareService.updateDeviceInfo(this.params['deviceId'] as string, this.params['deviceId'] as string);
     }
@@ -798,30 +726,136 @@ export struct Rule {
       this.hardwareService.updateDeviceInfo(this.params['ipAddress'] as string, this.params['deviceId'] as string);
     }
 
-    // 初始化阈值和目标值
+    this.loadStateFromGlobal();
+    this.listenToGlobalChanges();
     this.initThresholdsAndTargets();
-
-    // 初始化设备状态
-    this.initDeviceState();
-
-    // 加载传感器数据
     this.loadSensorData();
-    // 初始化示例日志
     this.initSampleLogs();
 
-    // 启动定时器：每10秒获取传感器数据
     this.sensorTimer = setInterval(() => {
       this.loadSensorData();
     }, 10000);
 
-    // 启动自动控制定时器：每5秒检查一次
     this.autoControlTimer = setInterval(() => {
       this.autoControl();
     }, 5000);
   }
-  /**
-   * 初始化示例日志
-   */
+
+  // ✅ 修复：不使用展开运算符
+  private loadStateFromGlobal(): void {
+    this.isSyncingFromGlobal = true;
+
+    const globalState = this.globalStateService.getState();
+
+    this.isCheck1 = globalState.ruleSwitches.autoIrrigation;
+    this.isCheck2 = globalState.ruleSwitches.nightLighting;
+    this.isCheck3 = globalState.ruleSwitches.ventilation;
+
+    this.lightStartHour = globalState.timeSetting.lightStartHour;
+    this.lightStartMinute = globalState.timeSetting.lightStartMinute;
+    this.lightEndHour = globalState.timeSetting.lightEndHour;
+    this.lightEndMinute = globalState.timeSetting.lightEndMinute;
+
+    // ✅ 修复：手动赋值 target 对象属性
+    this.targets.co2Target = globalState.targets.co2Target;
+    this.targets.soilTempTarget = globalState.targets.soilTempTarget;
+    this.targets.soilHumidityTarget = globalState.targets.soilHumidityTarget;
+
+    // ✅ 修复：手动赋值 thresholds 对象属性
+    this.thresholds.co2Threshold = globalState.thresholds.co2Threshold;
+    this.thresholds.soilTempThreshold = globalState.thresholds.soilTempThreshold;
+    this.thresholds.soilHumidityThreshold = globalState.thresholds.soilHumidityThreshold;
+    this.thresholds.lightThreshold = globalState.thresholds.lightThreshold;
+    this.thresholds.waterVolumeThreshold = globalState.thresholds.waterVolumeThreshold;
+
+    // ✅ 修复：手动赋值 currentLightSetting
+    if (this.currentLightSetting) {
+      this.currentLightSetting.brightness = globalState.lightSetting.brightness;
+      this.currentLightSetting.red = globalState.lightSetting.red;
+      this.currentLightSetting.green = globalState.lightSetting.green;
+      this.currentLightSetting.blue = globalState.lightSetting.blue;
+      this.currentLightSetting.lightDuration = globalState.lightSetting.lightDuration;
+    } else {
+      this.currentLightSetting = {
+        brightness: globalState.lightSetting.brightness,
+        red: globalState.lightSetting.red,
+        green: globalState.lightSetting.green,
+        blue: globalState.lightSetting.blue,
+        lightDuration: globalState.lightSetting.lightDuration
+      };
+    }
+
+    // ✅ 修复：手动赋值 sensorData
+    this.sensorData.soilHumidity = globalState.sensorData.soilHumidity;
+    this.sensorData.light = globalState.sensorData.light;
+    this.sensorData.co2 = 0;
+    this.sensorData.waterVolume = globalState.sensorData.waterVolume;
+
+    this.waterState = globalState.deviceState.waterState;
+    this.lightState = globalState.deviceState.lightState;
+    this.airState = globalState.deviceState.airState;
+
+    this.updateRunningCount();
+
+    this.isSyncingFromGlobal = false;
+
+    console.log('[Rule] 从全局状态加载完成');
+  }
+
+  // ✅ 修复：不使用展开运算符
+  private listenToGlobalChanges(): void {
+    this.globalStateService.addListener((newState: GlobalState) => {
+      if (this.isSyncingFromGlobal) return;
+
+      console.log('[Rule] 收到全局状态变化');
+
+      this.isSyncingFromGlobal = true;
+
+      this.isCheck1 = newState.ruleSwitches.autoIrrigation;
+      this.isCheck2 = newState.ruleSwitches.nightLighting;
+      this.isCheck3 = newState.ruleSwitches.ventilation;
+
+      //  核心修复：只有在没打开时间选择器时，才同步全局时间
+      if (!this.showTimePickerDialog && !this.showLightTimeSettingDialog) {
+        this.lightStartHour = newState.timeSetting.lightStartHour;
+        this.lightStartMinute = newState.timeSetting.lightStartMinute;
+        this.lightEndHour = newState.timeSetting.lightEndHour;
+        this.lightEndMinute = newState.timeSetting.lightEndMinute;
+      }
+
+      // 修复：手动赋值
+      this.targets.co2Target = newState.targets.co2Target;
+      this.targets.soilTempTarget = newState.targets.soilTempTarget;
+      this.targets.soilHumidityTarget = newState.targets.soilHumidityTarget;
+
+      this.thresholds.co2Threshold = newState.thresholds.co2Threshold;
+      this.thresholds.soilTempThreshold = newState.thresholds.soilTempThreshold;
+      this.thresholds.soilHumidityThreshold = newState.thresholds.soilHumidityThreshold;
+      this.thresholds.lightThreshold = newState.thresholds.lightThreshold;
+      this.thresholds.waterVolumeThreshold = newState.thresholds.waterVolumeThreshold;
+
+      this.sensorData.soilHumidity = newState.sensorData.soilHumidity;
+      this.sensorData.light = newState.sensorData.light;
+      this.sensorData.waterVolume = newState.sensorData.waterVolume;
+
+      this.waterState = newState.deviceState.waterState;
+      this.lightState = newState.deviceState.lightState;
+      this.airState = newState.deviceState.airState;
+
+      if (this.currentLightSetting) {
+        this.currentLightSetting.brightness = newState.lightSetting.brightness;
+        this.currentLightSetting.red = newState.lightSetting.red;
+        this.currentLightSetting.green = newState.lightSetting.green;
+        this.currentLightSetting.blue = newState.lightSetting.blue;
+        this.currentLightSetting.lightDuration = newState.lightSetting.lightDuration;
+      }
+
+      this.updateRunningCount();
+
+      this.isSyncingFromGlobal = false;
+    });
+  }
+
   private initSampleLogs(): void {
     const now = new Date();
     const sampleLogs: ActivityLog[] = [
@@ -851,31 +885,43 @@ export struct Rule {
     this.allLogs = sampleLogs;
     this.updateDisplayLogs();
   }
+
   aboutToDisappear(): void {
     if (this.sensorTimer !== -1) clearInterval(this.sensorTimer);
     if (this.autoControlTimer !== -1) clearInterval(this.autoControlTimer);
   }
 
-  // ========== 初始化方法 ==========
-
-  /**
-   * 初始化阈值和目标值
-   */
   async initThresholdsAndTargets(): Promise<void> {
     try {
-      // 获取阈值
       const thresholds = await this.hardwareService.fetchThresholds();
       if (thresholds) {
-        this.thresholds = thresholds;
+        this.thresholds.co2Threshold = thresholds.co2Threshold;
+        this.thresholds.soilTempThreshold = thresholds.soilTempThreshold;
+        this.thresholds.soilHumidityThreshold = thresholds.soilHumidityThreshold;
+        this.thresholds.lightThreshold = thresholds.lightThreshold;
+        this.thresholds.waterVolumeThreshold = thresholds.waterVolumeThreshold;
+        await this.globalStateService.updateThresholds({
+          "co2Threshold": thresholds.co2Threshold,
+          "soilTempThreshold": thresholds.soilTempThreshold,
+          "soilHumidityThreshold": thresholds.soilHumidityThreshold,
+          "lightThreshold": thresholds.lightThreshold,
+          "waterVolumeThreshold": thresholds.waterVolumeThreshold
+        });
         console.log('阈值初始化成功:', this.thresholds);
       } else {
         console.log('使用默认阈值');
       }
 
-      // 获取目标值
       const targets = await this.hardwareService.fetchTargets();
       if (targets) {
-        this.targets = targets;
+        this.targets.co2Target = targets.co2Target;
+        this.targets.soilTempTarget = targets.soilTempTarget;
+        this.targets.soilHumidityTarget = targets.soilHumidityTarget;
+        await this.globalStateService.updateTargets({
+          "co2Target": targets.co2Target,
+          "soilTempTarget": targets.soilTempTarget,
+          "soilHumidityTarget": targets.soilHumidityTarget
+        });
         console.log('目标值初始化成功:', this.targets);
       } else {
         console.log('使用默认目标值');
@@ -885,9 +931,6 @@ export struct Rule {
     }
   }
 
-  /**
-   * 初始化设备状态
-   */
   async initDeviceState(): Promise<void> {
     try {
       const state = await this.hardwareService.fetchDeviceState();
@@ -902,12 +945,8 @@ export struct Rule {
     }
   }
 
-  /**
-   * 加载传感器数据
-   */
   async loadSensorData(): Promise<void> {
     try {
-      // 获取传感器数据（土壤湿度、光照、CO2）
       const sensorData = await this.cloudService.fetchSensorData();
       if (sensorData) {
         this.sensorData.soilHumidity = sensorData.soilHumidity;
@@ -916,13 +955,11 @@ export struct Rule {
         console.log(`传感器数据更新: 土壤湿度=${this.sensorData.soilHumidity}%, 光照=${this.sensorData.light}lx, CO2=${this.sensorData.co2}ppm`);
       }
 
-      // 获取水箱水量
       const waterVolume = await this.cloudService.fetchDeviceConfig(this.params['deviceId'] as string || 'device_001');
       if (waterVolume !== null) {
         this.sensorData.waterVolume = waterVolume;
         console.log(`水箱水量: ${this.sensorData.waterVolume}L`);
 
-        // 水箱水量低于阈值提醒
         if (this.sensorData.waterVolume < this.thresholds.waterVolumeThreshold) {
           this.showGlobalToast(`⚠️ 水箱水量不足！当前仅剩${this.sensorData.waterVolume}L，请及时补水`);
         }
@@ -932,45 +969,28 @@ export struct Rule {
     }
   }
 
-  // ========== 自动控制逻辑 ==========
-
-  /**
-   * 自动控制主逻辑
-   */
   async autoControl(): Promise<void> {
-    // 更新运行中规则计数
     this.updateRunningCount();
 
-    // 1. 自动灌溉控制
     if (this.isCheck1) {
       await this.autoIrrigationControl();
     }
 
-    // 2. 夜间照明控制
     if (this.isCheck2) {
       await this.autoLightControl();
     }
 
-    // 3. 温室通风控制
     if (this.isCheck3) {
       await this.autoAirControl();
     }
   }
 
-  /**
-   * 自动灌溉控制
-   * 当土壤湿度低于阈值 → 开启水泵
-   * 当土壤湿度高于目标值 → 关闭水泵
-   */
   async autoIrrigationControl(): Promise<void> {
-    // 检查水箱水量是否足够
     if (this.sensorData.waterVolume < this.thresholds.waterVolumeThreshold) {
       if (this.waterState) {
-        // 水量不足时自动关闭水泵
         const result = await this.hardwareService.sendCommand('water-off');
         if (result && result.status === 'success') {
           this.waterState = result.WaterState;
-          // 添加异常终止日志（黄色）
           this.addActivityLog(`自动灌溉异常终止(水量不足:${this.sensorData.waterVolume}L)`, false);
           this.showGlobalToast("⚠️ 水箱水量不足，自动灌溉已停止");
         }
@@ -978,103 +998,75 @@ export struct Rule {
       return;
     }
 
-    // 土壤湿度低于阈值 → 开启水泵
     if (this.sensorData.soilHumidity < this.thresholds.soilHumidityThreshold && !this.waterState) {
       console.log(`[自动灌溉] 土壤湿度${this.sensorData.soilHumidity}% < 阈值${this.thresholds.soilHumidityThreshold}%，开启水泵`);
       const result = await this.hardwareService.sendCommand('water');
       if (result && result.status === 'success') {
         this.waterState = result.WaterState;
-        // 添加正常开启日志（蓝色）
         this.addActivityLog(`自动灌溉系统启动(土壤湿度:${this.sensorData.soilHumidity}%)`, true);
         this.showGlobalToast("💧 土壤干燥，自动灌溉已开启");
       }
     }
 
-    // 土壤湿度高于目标值 → 关闭水泵
     if (this.sensorData.soilHumidity > this.targets.soilHumidityTarget && this.waterState) {
       console.log(`[自动灌溉] 土壤湿度${this.sensorData.soilHumidity}% > 目标值${this.targets.soilHumidityTarget}%，关闭水泵`);
       const result = await this.hardwareService.sendCommand('water-off');
       if (result && result.status === 'success') {
         this.waterState = result.WaterState;
-        // 添加正常开启日志（蓝色）
-        this.addActivityLog(`自动灌溉系统启动(土壤湿度:${this.sensorData.soilHumidity}%)`, true);
+        this.addActivityLog(`自动灌溉系统停止(土壤湿度:${this.sensorData.soilHumidity}%)`, true);
         this.showGlobalToast("✅ 土壤湿度已达标，自动灌溉已停止");
       }
     }
   }
 
-  /**
-   * 夜间照明控制
-   * 当光照强度低于阈值 → 开启LED灯（亮度50%，RGB均为255）
-   * 当光照强度高于阈值 → 关闭LED灯
-   */
   async autoLightControl(): Promise<void> {
-    // 光照低于阈值 → 开启补光
     if (this.sensorData.light < this.thresholds.lightThreshold && !this.lightState) {
       console.log(`[夜间照明] 光照${this.sensorData.light}lx < 阈值${this.thresholds.lightThreshold}lx，开启LED灯`);
 
-      // 设置亮度50%，RGB全白(255,255,255)
       const success = await this.hardwareService.updateLightSetting(50, 255, 255, 255);
       if (success) {
         const result = await this.hardwareService.sendCommand('light');
         if (result && result.status === 'success') {
           this.lightState = result.LightState;
-          // 添加正常开启日志（蓝色）
           this.addActivityLog(`夜间照明已开启(光照:${this.sensorData.light}lx)`, true);
           this.showGlobalToast("💡 环境光不足，夜间照明已开启");
         }
       }
     }
 
-    // 光照恢复正常 → 关闭补光
     if (this.sensorData.light >= this.thresholds.lightThreshold && this.lightState) {
       console.log(`[夜间照明] 光照${this.sensorData.light}lx >= 阈值${this.thresholds.lightThreshold}lx，关闭LED灯`);
       const result = await this.hardwareService.sendCommand('light-off');
       if (result && result.status === 'success') {
         this.lightState = result.LightState;
-        // 添加正常关闭日志（蓝色）
         this.addActivityLog(`夜间照明已关闭(光照:${this.sensorData.light}lx)`, true);
         this.showGlobalToast("🌞 光照充足，夜间照明已关闭");
       }
     }
   }
 
-  /**
-   * 温室通风控制
-   * 当CO2浓度高于阈值 → 开启换气
-   * 当CO2浓度低于目标值 → 关闭换气
-   */
   async autoAirControl(): Promise<void> {
-    // CO2浓度高于阈值 → 开启换气
     if (this.sensorData.co2 > this.thresholds.co2Threshold && !this.airState) {
       console.log(`[温室通风] CO2${this.sensorData.co2}ppm > 阈值${this.thresholds.co2Threshold}ppm，开启换气`);
       const result = await this.hardwareService.sendCommand('air');
       if (result && result.status === 'success') {
         this.airState = result.AirState;
-        // 添加正常开启日志（蓝色）
         this.addActivityLog(`温室通风已启动(CO2:${this.sensorData.co2}ppm)`, true);
-        this.showGlobalToast(" CO2浓度过高，温室通风已开启");
+        this.showGlobalToast("🌬️ CO2浓度过高，温室通风已开启");
       }
     }
 
-    // CO2浓度低于目标值 → 关闭换气
     if (this.sensorData.co2 < this.targets.co2Target && this.airState) {
       console.log(`[温室通风] CO2${this.sensorData.co2}ppm < 目标值${this.targets.co2Target}ppm，关闭换气`);
       const result = await this.hardwareService.sendCommand('air-off');
       if (result && result.status === 'success') {
         this.airState = result.AirState;
-        // 添加正常关闭日志（蓝色）
         this.addActivityLog(`温室通风已关闭(CO2:${this.sensorData.co2}ppm)`, true);
         this.showGlobalToast("✅ CO2浓度已达标，温室通风已关闭");
       }
     }
   }
 
-  // ========== UI辅助方法 ==========
-
-  /**
-   * 更新运行中的规则计数
-   */
   private updateRunningCount(): void {
     let count = 0;
     if (this.isCheck1) count++;
@@ -1083,9 +1075,6 @@ export struct Rule {
     this.runningCount = count;
   }
 
-  /**
-   * 添加日志项
-   */
   private addLogItem(content: string, dotColor: string): void {
     const now = new Date();
     const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
@@ -1096,15 +1085,11 @@ export struct Rule {
     };
     this.logList = [newLog, ...this.logList];
 
-    // 限制日志数量最多50条
     if (this.logList.length > 50) {
       this.logList = this.logList.slice(0, 50);
     }
   }
 
-  /**
-   * 全局Toast提示
-   */
   private showGlobalToast(message: string): void {
     promptAction.openToast({
       message: message,
@@ -1114,624 +1099,576 @@ export struct Rule {
 
   build() {
     NavDestination() {
-      Stack(){
-      Column() {
-        Row() {
-          Image($r('app.media.back'))
-            .backgroundColor('#E2E8F0')
-            .width('40vp')
-            .height('40vp')
-            .borderRadius(20)
-            .padding(12)
-            .onClick(() => {
-              NavigationManager.getInstance().pop()
-            })
-          Text('自动化规则').fontSize('25vp').fontWeight(FontWeight.Bold)
-          Text('')
-            .width('40vp')
-            .height('40vp')
-        }.width('100%').justifyContent(FlexAlign.SpaceBetween).padding({ left: 15, right: 15 })
+      Stack() {
+        Column() {
+          Row() {
+            Image($r('app.media.back'))
+              .backgroundColor('#E2E8F0')
+              .width('40vp')
+              .height('40vp')
+              .borderRadius(20)
+              .padding(12)
+              .onClick(() => {
+                NavigationManager.getInstance().pop()
+              })
+            Text('自动化规则').fontSize('25vp').fontWeight(FontWeight.Bold)
+            Text('')
+              .width('40vp')
+              .height('40vp')
+          }.width('100%').justifyContent(FlexAlign.SpaceBetween).padding({ left: 15, right: 15 })
 
-        Scroll() {
-          Column() {
-            Row() {
-              Text('自动行为').fontColor('#64748B')
-              Text(`${this.runningCount}个运行中`).fontColor('#13EC5B')
-            }
-            .width('100%')
-            .justifyContent(FlexAlign.SpaceBetween)
-            .padding(20)
-
-            Column({ space: 15 }) {
-              Row({ space: 10 }) {
-                Image($r('app.media.autowater'))
-                  .width('40vp')
-                  .height('40vp')
-                  .objectFit(ImageFit.Contain)
-                  .backgroundColor('#3313ec5b')
-                  .padding(10)
-                  .borderRadius(10)
-                Column() {
-                  Text('自动灌溉').fontWeight(FontWeight.Bold)
-                  Text('智能水资源管理').fontColor('#64748B').fontSize('12vp')
-                }
-                .alignItems(HorizontalAlign.Start)
-
-                Blank()
-
-                Toggle({ type: ToggleType.Switch, isOn: this.isCheck1 })
-                  .width('48vp')
-                  .height('30vp')
-                  .selectedColor('#13EC5B')
-                  .onChange((value) => {
-                    this.isCheck1 = value;
-                    this.updateRunningCount();
-                  })
+          Scroll() {
+            Column() {
+              Row() {
+                Text('自动行为').fontColor('#64748B')
+                Text(`${this.runningCount}个运行中`).fontColor('#13EC5B')
               }
               .width('100%')
-              .margin({ top: 15 })
-              .padding({ left: 15, right: 15 })
+              .justifyContent(FlexAlign.SpaceBetween)
+              .padding(20)
 
-              Column({ space: 3 }) {
-                Text() {
-                  Span('条件:').fontColor(this.isCheck1 ? '#13EC5B' : '#0F172A').fontSize('12vp')
-                  Span('土壤湿度<30%').fontSize('12vp')
+              // 自动灌溉卡片
+              Column({ space: 15 }) {
+                Row({ space: 10 }) {
+                  Image($r('app.media.autowater'))
+                    .width('40vp')
+                    .height('40vp')
+                    .objectFit(ImageFit.Contain)
+                    .backgroundColor('#3313ec5b')
+                    .padding(10)
+                    .borderRadius(10)
+                  Column() {
+                    Text('自动灌溉').fontWeight(FontWeight.Bold)
+                    Text('智能水资源管理').fontColor('#64748B').fontSize('12vp')
+                  }
+                  .alignItems(HorizontalAlign.Start)
+
+                  Blank()
+
+                  Toggle({ type: ToggleType.Switch, isOn: this.isCheck1 })
+                    .width('48vp')
+                    .height('30vp')
+                    .selectedColor('#13EC5B')
+                    .onChange(async (value) => {
+                      this.isCheck1 = value;
+                      this.updateRunningCount();
+                      await this.globalStateService.updateRuleSwitches({ "autoIrrigation": value });
+                    })
                 }
+                .width('100%')
+                .margin({ top: 15 })
+                .padding({ left: 15, right: 15 })
 
-                Text() {
-                  Span('行为:').fontColor(this.isCheck1 ? '#13EC5B' : '#0F172A').fontSize('12vp')
-                  Span('开启水泵进行灌溉,土壤湿度>60%时停止').fontSize('12vp')
+                Column({ space: 3 }) {
+                  Text() {
+                    Span('条件:').fontColor(this.isCheck1 ? '#13EC5B' : '#0F172A').fontSize('12vp')
+                    Span('土壤湿度<30%').fontSize('12vp')
+                  }
+
+                  Text() {
+                    Span('行为:').fontColor(this.isCheck1 ? '#13EC5B' : '#0F172A').fontSize('12vp')
+                    Span('开启水泵进行灌溉,土壤湿度>60%时停止').fontSize('12vp')
+                  }
+                }
+                .width('90%')
+                .height('50vp')
+                .backgroundColor(this.isCheck1 ? '#0d13ec5b' : '#F1F5F9')
+                .padding(10)
+                .borderRadius(10)
+                .border({
+                  width: 1,
+                  color: this.isCheck1 ? '#3313ec5b' : '#F1F5F9'
+                })
+                .alignItems(HorizontalAlign.Start)
+              }
+              .padding({ bottom: 15 })
+              .width('90%')
+              .backgroundColor(Color.White)
+              .shadow({
+                radius: 15,
+                color: 'rgba(0, 0, 0, 0.1)',
+                offsetX: 0,
+                offsetY: 8
+              })
+              .borderRadius(20)
+              .margin({ top: 15 })
+
+              // 夜间照明卡片
+              Column({ space: 15 }) {
+                Row({ space: 10 }) {
+                  Image($r('app.media.moon'))
+                    .width('40vp')
+                    .height('40vp')
+                    .objectFit(ImageFit.Contain)
+                    .backgroundColor('#3313ec5b')
+                    .padding(10)
+                    .borderRadius(10)
+                  Column() {
+                    Text('夜间照明').fontWeight(FontWeight.Bold)
+                    Text('安全与导航').fontColor('#64748B').fontSize('12vp')
+                  }
+                  .alignItems(HorizontalAlign.Start)
+
+                  Blank()
+
+                  Toggle({ type: ToggleType.Switch, isOn: this.isCheck2 })
+                    .width('48vp')
+                    .height('30vp')
+                    .selectedColor('#13EC5B')
+                    .onChange(async (value) => {
+                      this.isCheck2 = value;
+                      this.updateRunningCount();
+                      // ✅ 修复：使用正确的字段名 "nightLighting"
+                      await this.globalStateService.updateRuleSwitches({ "nightLighting": value });
+                      if (value) {
+                        this.fetchCurrentLightSetting();
+                        this.showLightTimeSettingDialog = true;
+                      }
+                    })
+                }
+                .width('100%')
+                .margin({ top: 15 })
+                .padding({ left: 15, right: 15 })
+
+                Column({ space: 3 }) {
+                  Text() {
+                    Span('条件:').fontColor(this.isCheck2 ? '#13EC5B' : '#0F172A').fontSize('12vp')
+                    Span(`环境光<${this.thresholds.lightThreshold}lx`).fontSize('12vp')
+                  }
+
+                  Text() {
+                    Span('行为:').fontColor(this.isCheck2 ? '#13EC5B' : '#0F172A').fontSize('12vp')
+                    Span(`开启补光,开始时间:${this.formatTime(this.lightStartHour, this.lightStartMinute)},结束时间:${this.formatTime(this.lightEndHour, this.lightEndMinute)}`)
+                      .fontSize('12vp')
+                  }
+                }
+                .width('90%')
+                .height('50vp')
+                .backgroundColor(this.isCheck2 ? '#0d13ec5b' : '#F1F5F9')
+                .padding(10)
+                .borderRadius(10)
+                .border({
+                  width: 1,
+                  color: this.isCheck2 ? '#3313ec5b' : '#F1F5F9'
+                })
+                .alignItems(HorizontalAlign.Start)
+              }
+              .padding({ bottom: 15 })
+              .width('90%')
+              .backgroundColor(Color.White)
+              .shadow({
+                radius: 15,
+                color: 'rgba(0, 0, 0, 0.1)',
+                offsetX: 0,
+                offsetY: 8
+              })
+              .borderRadius(20)
+              .margin({ top: 15 })
+
+              // 温室通风卡片
+              Column({ space: 15 }) {
+                Row({ space: 10 }) {
+                  Image($r('app.media.fans'))
+                    .width('40vp')
+                    .height('40vp')
+                    .objectFit(ImageFit.Contain)
+                    .backgroundColor('#3313ec5b')
+                    .padding(10)
+                    .borderRadius(10)
+                  Column() {
+                    Text('温室通风口').fontWeight(FontWeight.Bold)
+                    Text('空气环境控制').fontColor('#64748B').fontSize('12vp')
+                  }
+                  .alignItems(HorizontalAlign.Start)
+
+                  Blank()
+
+                  Toggle({ type: ToggleType.Switch, isOn: this.isCheck3 })
+                    .width('48vp')
+                    .height('30vp')
+                    .selectedColor('#13EC5B')
+                    .onChange(async (value) => {
+                      this.isCheck3 = value;
+                      this.updateRunningCount();
+                      // ✅ 修复：使用正确的字段名 "ventilation"
+                      await this.globalStateService.updateRuleSwitches({ "ventilation": value });
+                    })
+                }
+                .width('100%')
+                .margin({ top: 15 })
+                .padding({ left: 15, right: 15 })
+
+                Column({ space: 3 }) {
+                  Text() {
+                    Span('条件:').fontColor(this.isCheck3 ? '#13EC5B' : '#0F172A').fontSize('12vp')
+                    Span('co2浓度>500ppm').fontSize('12vp')
+                  }
+
+                  Text() {
+                    Span('行为:').fontColor(this.isCheck3 ? '#13EC5B' : '#0F172A').fontSize('12vp')
+                    Span('打开换气扇换气').fontSize('12vp')
+                  }
+                }
+                .width('90%')
+                .height('50vp')
+                .backgroundColor(this.isCheck3 ? '#0d13ec5b' : '#F1F5F9')
+                .padding(10)
+                .borderRadius(10)
+                .border({
+                  width: 1,
+                  color: this.isCheck3 ? '#3313ec5b' : '#F1F5F9'
+                })
+                .alignItems(HorizontalAlign.Start)
+              }
+              .padding({ bottom: 15 })
+              .width('90%')
+              .backgroundColor(Color.White)
+              .shadow({
+                radius: 15,
+                color: 'rgba(0, 0, 0, 0.1)',
+                offsetX: 0,
+                offsetY: 8
+              })
+              .borderRadius(20)
+              .margin({ top: 15 })
+
+              Text('近期事件').fontColor('#64748B').width('100%').padding(15)
+              Column() {
+                Row() {
+                  Text("活动日志")
+                    .fontSize(22)
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor("#1E293B")
+
+                  Blank()
+
+                  Text(this.showAllLogs ? "收起" : "查看全部")
+                    .fontSize(15)
+                    .fontColor("#13EC5B")
+                    .onClick(() => {
+                      this.toggleShowAllLogs();
+                    })
+                }
+                .width("95%")
+                .margin({ top: 15, bottom: 10, right: 10 })
+
+                Divider().width("95%").color("#94A3B8")
+
+                Column({ space: 0 }) {
+                  ForEach(this.displayLogs, (item: ActivityLog) => {
+                    Row({ space: 12 }) {
+                      Circle()
+                        .width(10)
+                        .height(10)
+                        .fill(item.dotColor)
+
+                      Text(item.content)
+                        .fontSize(15)
+                        .fontColor("#333")
+                        .layoutWeight(1)
+
+                      Text(item.time)
+                        .fontSize(13)
+                        .fontColor("#9CA3AF")
+                    }
+                    .width("95%")
+                    .padding({ top: 14, bottom: 14 })
+
+                    Divider().width("95%").color("#94A3B8")
+                  })
+                }
+                .margin({ top: 5 })
+
+                if (this.displayLogs.length === 0) {
+                  Text("暂无活动记录")
+                    .fontSize(14)
+                    .fontColor("#94A3B8")
+                    .width("95%")
+                    .height(60)
+                    .textAlign(TextAlign.Center)
                 }
               }
               .width('90%')
-              .height('50vp')
-              .backgroundColor(this.isCheck1 ? '#0d13ec5b' : '#F1F5F9')
-              .padding(10)
-              .borderRadius(10)
-              .border({
-                width: 1,
-                color: this.isCheck1 ? '#3313ec5b' : '#F1F5F9'
-
+              .backgroundColor(Color.White)
+              .shadow({
+                radius: 15,
+                color: 'rgba(0, 0, 0, 0.1)',
+                offsetX: 0,
+                offsetY: 8
               })
-              .alignItems(HorizontalAlign.Start)
-
+              .borderRadius(20)
+              .margin({ top: 15 })
             }
-            .padding({ bottom: 15 })
-            .width('90%')
-            .backgroundColor(Color.White)
-            .shadow({
-              radius: 15,
-              color: 'rgba(0, 0, 0, 0.1)',
-              offsetX: 0,
-              offsetY: 8
-            })
-            .borderRadius(20)
-            .margin({ top: 15 })
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .backgroundColor('#80f1f5f9')
+          .flexShrink(0)
+          .scrollBar(BarState.Off)
+          .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        }
 
-            Column({ space: 15 }) {
-              Row({ space: 10 }) {
-                Image($r('app.media.moon'))
-                  .width('40vp')
-                  .height('40vp')
-                  .objectFit(ImageFit.Contain)
-                  .backgroundColor('#3313ec5b')
-                  .padding(10)
-                  .borderRadius(10)
-                Column() {
-                  Text('夜间照明').fontWeight(FontWeight.Bold)
-                  Text('安全与导航').fontColor('#64748B').fontSize('12vp')
+        // 时间设置弹窗
+        if (this.showLightTimeSettingDialog) {
+          Stack({ alignContent: Alignment.Center }) {
+            Column()
+              .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+              .width('100%')
+              .height('100%')
+              .backgroundColor('rgba(0, 0, 0, 0.5)')
+              .onClick(() => {
+                this.showLightTimeSettingDialog = false;
+              })
+
+            Column() {
+              Text('夜间照明设置')
+                .fontSize('20vp')
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#13EC5B')
+                .margin({ top: 20 })
+
+              Column() {
+                Text('开始时间')
+                  .fontSize('14vp')
+                  .fontColor('#64748B')
+                  .margin({ bottom: 5 })
+
+                Row() {
+                  Text(this.formatTime(this.lightStartHour, this.lightStartMinute))
+                    .fontSize('24vp')
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#13EC5B')
+                    .padding({ left: 20, right: 20, top: 10, bottom: 10 })
+                    .backgroundColor('#1a13ec5b')
+                    .borderRadius(20)
+                    .onClick(() => {
+                      this.timePickerType = 'start';
+                      this.tempStartHour = this.lightStartHour;
+                      this.tempStartMinute = this.lightStartMinute;
+                      this.showTimePickerDialog = true;
+                    })
                 }
-                .alignItems(HorizontalAlign.Start)
+                .width('100%')
+                .justifyContent(FlexAlign.Center)
+              }
+              .width('100%')
+              .padding({ top: 15, bottom: 10 })
 
-                Blank()
+              Column() {
+                Text('结束时间')
+                  .fontSize('14vp')
+                  .fontColor('#64748B')
+                  .margin({ bottom: 5 })
 
-                Toggle({ type: ToggleType.Switch, isOn: this.isCheck2 })
-                  .width('48vp')
-                  .height('30vp')
-                  .selectedColor('#13EC5B')
-                  .onChange((value) => {
-                    this.isCheck2 = value;
-                    this.updateRunningCount();
-                    // 开启时获取当前补光设置
-                    if (value) {
-                      this.fetchCurrentLightSetting();
-                      this.showLightTimeSettingDialog = true;
+                Row() {
+                  Text(this.formatTime(this.lightEndHour, this.lightEndMinute))
+                    .fontSize('24vp')
+                    .fontWeight(FontWeight.Bold)
+                    .fontColor('#13EC5B')
+                    .padding({ left: 20, right: 20, top: 10, bottom: 10 })
+                    .backgroundColor('#1a13ec5b')
+                    .borderRadius(20)
+                    .onClick(() => {
+                      this.timePickerType = 'end';
+                      this.tempEndHour = this.lightEndHour;
+                      this.tempEndMinute = this.lightEndMinute;
+                      this.showTimePickerDialog = true;
+                    })
+                }
+                .width('100%')
+                .justifyContent(FlexAlign.Center)
+              }
+              .width('100%')
+              .padding({ bottom: 10 })
+
+              if (this.currentLightSetting) {
+                Column() {
+                  Text(`当前补光亮度: ${this.currentLightSetting.brightness}%`)
+                    .fontSize('12vp')
+                    .fontColor('#94A3B8')
+                  Text(`当前补光颜色: RGB(${this.currentLightSetting.red},${this.currentLightSetting.green},${this.currentLightSetting.blue})`)
+                    .fontSize('12vp')
+                    .fontColor('#94A3B8')
+                }
+                .width('100%')
+                .padding({ top: 5, bottom: 10 })
+                .alignItems(HorizontalAlign.Center)
+              }
+
+              Divider().width('90%').color('#E2E8F0')
+
+              Row({ space: 16 }) {
+                Button("取消")
+                  .width("40%")
+                  .height('44vp')
+                  .backgroundColor("#DFE3E2")
+                  .fontColor("#2C2F2F")
+                  .borderRadius(22)
+                  .onClick(() => {
+                    this.showLightTimeSettingDialog = false;
+                  })
+
+                Button("确认")
+                  .width("40%")
+                  .height(44)
+                  .backgroundColor("#13EC5B")
+                  .fontColor(Color.White)
+                  .borderRadius(22)
+                  .onClick(() => {
+                    this.saveLightTimeSetting();
+                    this.showLightTimeSettingDialog = false;
+                  })
+              }
+              .padding({ left: 24, right: 24, bottom: 24 })
+              .margin({ top: 10 })
+            }
+            .width("80%")
+            .backgroundColor("#F8FFF8")
+            .borderRadius(24)
+          }
+          .width('100%')
+          .height('100%')
+          .position({ x: 0, y: 0 })
+          .zIndex(888)
+        }
+
+
+        // 时间滚动选择器弹窗
+        if (this.showTimePickerDialog) {
+          Stack({ alignContent: Alignment.Center }) {
+            Column()
+              .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+              .width('100%')
+              .height('100%')
+              .backgroundColor('rgba(0, 0, 0, 0.5)')
+              .onClick(() => {
+                this.showTimePickerDialog = false;
+              })
+
+            Column() {
+              Text(this.timePickerType === 'start' ? '选择开始时间' : '选择结束时间')
+                .fontSize('18vp')
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#13EC5B')
+                .margin({ top: 20, bottom: 10 })
+
+              Stack({ alignContent: Alignment.Center }) {
+                Row()
+                  .width('90%')
+                  .height(60)
+                  .backgroundColor('#F5F5F5')
+                  .borderRadius(8)
+
+                Row({ space: 6 }) {
+                  // 小时列表
+                  List({ scroller: this.timePickerType === 'start' ? this.startHourScroller : this.endHourScroller }) {
+                    ForEach(this.hourList, (hour: number) => {
+                      ListItem() {
+                        Text(hour.toString().padStart(2, '0'))
+                          .fontSize((this.timePickerType === 'start' && this.tempStartHour === hour) ||
+                            (this.timePickerType === 'end' && this.tempEndHour === hour) ? 48 : 32)
+                          .fontColor((this.timePickerType === 'start' && this.tempStartHour === hour) ||
+                            (this.timePickerType === 'end' && this.tempEndHour === hour) ? '#13EC5B' : '#999')
+                          .fontWeight(FontWeight.Bold)
+                          .textAlign(TextAlign.Center)
+                      }
+                      .width('100%')
+                      .height(60)
+                    })
+                  }
+                  .width('45%')
+                  .height(180)
+                  .alignListItem(ListItemAlign.Center)
+                  .scrollSnapAlign(ScrollSnapAlign.CENTER)
+                  .scrollBar(BarState.Off)
+                  .onScrollIndex((start, end, center) => {
+                    if (this.timePickerType === 'start') {
+                      this.tempStartHour = this.hourList[center];
+                    } else {
+                      this.tempEndHour = this.hourList[center];
                     }
                   })
-              }
-              .width('100%')
-              .margin({ top: 15 })
-              .padding({ left: 15, right: 15 })
 
+                  Text(':')
+                    .fontSize(48)
+                    .fontColor('#999')
+                    .fontWeight(FontWeight.Bold)
 
-              Column({ space: 3 }) {
-                Text() {
-                  Span('条件:').fontColor(this.isCheck2 ? '#13EC5B' : '#0F172A').fontSize('12vp')
-                  Span(`环境光<${this.thresholds.lightThreshold}lx`).fontSize('12vp')
-                }
-
-                Text() {
-                  Span('行为:').fontColor(this.isCheck2 ? '#13EC5B' : '#0F172A').fontSize('12vp')
-                  Span(`开启补光,开始时间:${this.formatTime(this.lightStartHour,
-                    this.lightStartMinute)},结束时间:${this.formatTime(this.lightEndHour, this.lightEndMinute)}`)
-                    .fontSize('12vp')
-                }
-              }
-              .width('90%')
-              .height('50vp')
-              .backgroundColor(this.isCheck2 ? '#0d13ec5b' : '#F1F5F9')
-              .padding(10)
-              .borderRadius(10)
-              .border({
-                width: 1,
-                color: this.isCheck2 ? '#3313ec5b' : '#F1F5F9'
-
-              })
-              .alignItems(HorizontalAlign.Start)
-
-            }
-            .padding({ bottom: 15 })
-            .width('90%')
-            .backgroundColor(Color.White)
-            .shadow({
-              radius: 15,
-              color: 'rgba(0, 0, 0, 0.1)',
-              offsetX: 0,
-              offsetY: 8
-            })
-            .borderRadius(20)
-            .margin({ top: 15 })
-
-            Column({ space: 15 }) {
-              Row({ space: 10 }) {
-                Image($r('app.media.fans'))
-                  .width('40vp')
-                  .height('40vp')
-                  .objectFit(ImageFit.Contain)
-                  .backgroundColor('#3313ec5b')
-                  .padding(10)
-                  .borderRadius(10)
-                Column() {
-                  Text('温室通风口').fontWeight(FontWeight.Bold)
-                  Text('空气环境控制').fontColor('#64748B').fontSize('12vp')
-                }
-                .alignItems(HorizontalAlign.Start)
-
-                Blank()
-
-                Toggle({ type: ToggleType.Switch, isOn: this.isCheck3 })
-                  .width('48vp')
-                  .height('30vp')
-                  .selectedColor('#13EC5B')
-                  .onChange((value) => {
-                    this.isCheck3 = value;
-                    this.updateRunningCount();
-                  })
-              }
-              .width('100%')
-              .margin({ top: 15 })
-              .padding({ left: 15, right: 15 })
-
-              Column({ space: 3 }) {
-                Text() {
-                  Span('条件:').fontColor(this.isCheck3 ? '#13EC5B' : '#0F172A').fontSize('12vp')
-                  Span('co2浓度>500ppm').fontSize('12vp')
-                }
-
-                Text() {
-                  Span('行为:').fontColor(this.isCheck3 ? '#13EC5B' : '#0F172A').fontSize('12vp')
-                  Span('打开换气扇换气').fontSize('12vp')
-                }
-              }
-              .width('90%')
-              .height('50vp')
-              .backgroundColor(this.isCheck3 ? '#0d13ec5b' : '#F1F5F9')
-              .padding(10)
-              .borderRadius(10)
-              .border({
-                width: 1,
-                color: this.isCheck3 ? '#3313ec5b' : '#F1F5F9'
-
-              })
-              .alignItems(HorizontalAlign.Start)
-
-            }
-            .padding({ bottom: 15 })
-            .width('90%')
-            .backgroundColor(Color.White)
-            .shadow({
-              radius: 15,
-              color: 'rgba(0, 0, 0, 0.1)',
-              offsetX: 0,
-              offsetY: 8
-            })
-            .borderRadius(20)
-            .margin({ top: 15 })
-
-            Text('近期事件').fontColor('#64748B').width('100%').padding(15)
-            Column() {
-              // 标题 + 查看全部
-              Row() {
-                Text("活动日志")
-                  .fontSize(22)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor("#1E293B")
-
-                Blank()
-
-                // 查看全部（可点击跳转）
-                Text(this.showAllLogs ? "收起" : "查看全部")
-                  .fontSize(15)
-                  .fontColor("#13EC5B")
-                  .onClick(() => {
-                    this.toggleShowAllLogs();
-                  })
-              }
-              .width("95%")
-              .margin({ top: 15, bottom: 10, right: 10 })
-
-              // 分割线
-              Divider().width("95%").color("#94A3B8")
-
-              // 日志列表
-              Column({ space: 0 }) {
-                ForEach(this.displayLogs, (item: ActivityLog) => {
-                  Row({ space: 12 }) {
-                    // 左侧彩色圆点
-                    Circle()
-                      .width(10)
-                      .height(10)
-                      .fill(item.dotColor)
-
-                    // 内容
-                    Text(item.content)
-                      .fontSize(15)
-                      .fontColor("#333")
-                      .layoutWeight(1)
-
-                    // 时间
-                    Text(item.time)
-                      .fontSize(13)
-                      .fontColor("#9CA3AF")
+                  // 分钟列表
+                  List({ scroller: this.timePickerType === 'start' ? this.startMinuteScroller : this.endMinuteScroller }) {
+                    ForEach(this.minuteList, (minute: number) => {
+                      ListItem() {
+                        Text(minute.toString().padStart(2, '0'))
+                        // 核心修复：完全独立判断开始/结束时间
+                          .fontSize((this.timePickerType === 'start' && this.tempStartMinute === minute) ||
+                            (this.timePickerType === 'end' && this.tempEndMinute === minute) ? 48 : 32)
+                          .fontColor((this.timePickerType === 'start' && this.tempStartMinute === minute) ||
+                            (this.timePickerType === 'end' && this.tempEndMinute === minute) ? '#13EC5B' : '#999')
+                          .fontWeight(FontWeight.Bold)
+                          .textAlign(TextAlign.Center)
+                      }
+                      .width('100%')
+                      .height(60)
+                    })
                   }
-                  .width("95%")
-                  .padding({ top: 14, bottom: 14 })
-
-                  // 分割线
-                  Divider().width("95%").color("#94A3B8")
-                })
-              }
-              .margin({ top: 5 })
-
-              // 当没有日志时显示提示
-              if (this.displayLogs.length === 0) {
-                Text("暂无活动记录")
-                  .fontSize(14)
-                  .fontColor("#94A3B8")
-                  .width("95%")
-                  .height(60)
-                  .textAlign(TextAlign.Center)
-              }
-            }
-            .width('90%')
-            .backgroundColor(Color.White)
-            .shadow({
-              radius: 15,
-              color: 'rgba(0, 0, 0, 0.1)',
-              offsetX: 0,
-              offsetY: 8
-            })
-            .borderRadius(20)
-            .margin({ top: 15 })
-
-          }
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .backgroundColor('#80f1f5f9')
-        .flexShrink(0)
-        .scrollBar(BarState.Off)
-
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-      }
-
-      // ✅ 时间设置弹窗（点击开关后弹出）
-      if (this.showLightTimeSettingDialog) {
-        Stack({ alignContent: Alignment.Center }) {
-          // 遮罩层
-          Column()
-            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-            .width('100%')
-            .height('100%')
-            .backgroundColor('rgba(0, 0, 0, 0.5)')
-            .onClick(() => {
-              this.showLightTimeSettingDialog = false;
-            })
-
-
-
-          // 卡片
-          Column() {
-            // 标题
-            Text('夜间照明设置')
-              .fontSize('20vp')
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#13EC5B')
-              .margin({ top: 20 })
-
-            // 开始时间区域
-            Column() {
-              Text('开始时间')
-                .fontSize('14vp')
-                .fontColor('#64748B')
-                .margin({ bottom: 5 })
-
-              Row() {
-                Text(this.formatTime(this.lightStartHour, this.lightStartMinute))
-                  .fontSize('24vp')
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor('#13EC5B')
-                  .padding({
-                    left: 20,
-                    right: 20,
-                    top: 10,
-                    bottom: 10
+                  .width('45%')
+                  .height(180)
+                  .alignListItem(ListItemAlign.Center)
+                  .scrollSnapAlign(ScrollSnapAlign.CENTER)
+                  .scrollBar(BarState.Off)
+                  .onScrollIndex((start, end, center) => {
+                    if (this.timePickerType === 'start') {
+                      this.tempStartMinute = this.minuteList[center];
+                    } else {
+                      this.tempEndMinute = this.minuteList[center];
+                    }
                   })
-                  .backgroundColor('#1a13ec5b')
-                  .borderRadius(20)
+                }
+              }
+              .margin({ bottom: 15 })
+
+              Row({ space: 16 }) {
+                Button("取消")
+                  .width('45%')
+                  .height(50)
+                  .backgroundColor('#DFE3E2')
+                  .fontColor('#2C2F2F')
+                  .borderRadius(25)
                   .onClick(() => {
-                    this.timePickerType = 'start';
-                    this.tempStartHour = this.lightStartHour;
-                    this.tempStartMinute = this.lightStartMinute;
-                    this.showTimePickerDialog = true;
+                    this.showTimePickerDialog = false;
                   })
-              }
-              .width('100%')
-              .justifyContent(FlexAlign.Center)
-            }
-            .width('100%')
-            .padding({ top: 15, bottom: 10 })
 
-            // 结束时间区域
-            Column() {
-              Text('结束时间')
-                .fontSize('14vp')
-                .fontColor('#64748B')
-                .margin({ bottom: 5 })
-
-              Row() {
-                Text(this.formatTime(this.lightEndHour, this.lightEndMinute))
-                  .fontSize('24vp')
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor('#13EC5B')
-                  .padding({
-                    left: 20,
-                    right: 20,
-                    top: 10,
-                    bottom: 10
-                  })
-                  .backgroundColor('#1a13ec5b')
-                  .borderRadius(20)
+                Button("确定")
+                  .width('45%')
+                  .height(50)
+                  .backgroundColor('#13EC5B')
+                  .fontColor(Color.White)
+                  .borderRadius(25)
                   .onClick(() => {
-                    this.timePickerType = 'end';
-                    this.tempEndHour = this.lightEndHour;
-                    this.tempEndMinute = this.lightEndMinute;
-                    this.showTimePickerDialog = true;
+                    if (this.timePickerType === 'start') {
+                      this.lightStartHour = this.tempStartHour;
+                      this.lightStartMinute = this.tempStartMinute;
+                    } else {
+                      this.lightEndHour = this.tempEndHour;
+                      this.lightEndMinute = this.tempEndMinute;
+                    }
+                    this.showTimePickerDialog = false;
                   })
               }
-              .width('100%')
-              .justifyContent(FlexAlign.Center)
+              .padding({ left: 24, right: 24, bottom: 24 })
             }
-            .width('100%')
-            .padding({ bottom: 10 })
-            .onClick(() => {})
-            // 当前补光信息提示
-            if (this.currentLightSetting) {
-              Column() {
-                Text(`当前补光亮度: ${this.currentLightSetting.brightness}%`)
-                  .fontSize('12vp')
-                  .fontColor('#94A3B8')
-                Text(`当前补光颜色: RGB(${this.currentLightSetting.red},${this.currentLightSetting.green},${this.currentLightSetting.blue})`)
-                  .fontSize('12vp')
-                  .fontColor('#94A3B8')
-              }
-              .width('100%')
-              .padding({ top: 5, bottom: 10 })
-              .alignItems(HorizontalAlign.Center)
-              .onClick(() => {})
-            }
-
-            Divider().width('90%').color('#E2E8F0')
-
-            // 底部按钮
-            Row({ space: 16 }) {
-              Button("取消")
-                .width("40%")
-                .height('44vp')
-                .backgroundColor("#DFE3E2")
-                .fontColor("#2C2F2F")
-                .borderRadius(22)
-                .onClick(() => {
-                  this.showLightTimeSettingDialog = false;
-                });
-
-              Button("确认")
-                .width("40%")
-                .height(44)
-                .backgroundColor("#13EC5B")
-                .fontColor(Color.White)
-                .borderRadius(22)
-                .onClick(() => {
-                  this.saveLightTimeSetting();
-                  this.showLightTimeSettingDialog = false;
-                });
-            }
-            .padding({ left: 24, right: 24, bottom: 24 })
-            .margin({ top: 10 })
+            .width('80%')
+            .backgroundColor('#F8FFF8')
+            .borderRadius(24)
           }
-          .width("80%")
-          .backgroundColor("#F8FFF8")
-          .borderRadius(24)
-          .onClick(() => {})
+          .width('100%')
+          .height('100%')
+          .position({ x: 0, y: 0 })
+          .zIndex(999)
         }
-        .width('100%')
-        .height('100%')
-        .position({ x: 0, y: 0 })
-        .zIndex(888)
       }
-      // 时间滚动选择器弹窗（点击开始时间或结束时间后弹出）
-      if (this.showTimePickerDialog) {
-        Stack({ alignContent: Alignment.Center }) {
-          Column()
-            .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-            .width('100%')
-            .height('100%')
-            .backgroundColor('rgba(0, 0, 0, 0.5)')
-            .onClick(() => {
-              this.showTimePickerDialog = false;
-            })
-
-          Column() {
-            Text(this.timePickerType === 'start' ? '选择开始时间' : '选择结束时间')
-              .fontSize('18vp')
-              .fontWeight(FontWeight.Bold)
-              .fontColor('#13EC5B')
-              .margin({ top: 20 })
-            Row({ space: 6 }) {
-
-           // 小时列表
-           List({ scroller: this.timePickerType === 'start' ? this.startHourScroller : this.endHourScroller }) {
-             ForEach(this.hourList, (hour: number, index: number) => {
-               ListItem() {
-                 Text(hour.toString().padStart(2, "0"))
-                   .fontSize((this.timePickerType === 'start' ? this.tempStartHour : this.tempEndHour) === hour ?
-                     48 : 32)
-                   .fontColor((this.timePickerType === 'start' ? this.tempStartHour : this.tempEndHour) === hour ?
-                     "#13EC5B" : "#999")
-                   .fontWeight(FontWeight.Bold)
-                   .textAlign(TextAlign.Center)
-               }
-               .width('100%')
-               .height(60)
-             }, (hour: number, index: number) => `${index}_${hour}`)
-           }
-           .width("45%")
-           .height(180)
-           .alignListItem(ListItemAlign.Center)
-           .scrollSnapAlign(ScrollSnapAlign.CENTER)
-           .scrollBar(BarState.Off)
-           .onScrollStop(() => {
-             const offset =
-               (this.timePickerType === 'start' ? this.startHourScroller : this.endHourScroller).currentOffset();
-             if (offset) {
-               const itemHeight = 60;
-               const listHeight = 180;
-               const centerPosition = offset.yOffset + listHeight / 2;
-               const selectedIndex = Math.floor(centerPosition / itemHeight);
-               if (selectedIndex >= 0 && selectedIndex < this.hourList.length) {
-                 if (this.timePickerType === 'start') {
-                   this.tempStartHour = this.hourList[selectedIndex];
-                 } else {
-                   this.tempEndHour = this.hourList[selectedIndex];
-                 }
-               }
-             }
-           })
-
-           Text(":")
-             .fontSize(48)
-             .fontColor("#999")
-             .fontWeight(FontWeight.Bold)
-
-
-           // 分钟列表
-           List({ scroller: this.timePickerType === 'start' ? this.startMinuteScroller : this.endMinuteScroller }) {
-             ForEach(this.minuteList, (minute: number, index: number) => {
-               ListItem() {
-                 Text(minute.toString().padStart(2, "0"))
-                   .fontSize((this.timePickerType === 'start' ? this.tempStartMinute : this.tempEndMinute) ===
-                     minute ? 48 : 32)
-                   .fontColor((this.timePickerType === 'start' ? this.tempStartMinute : this.tempEndMinute) ===
-                     minute ? "#13EC5B" : "#999")
-                   .fontWeight(FontWeight.Bold)
-                   .textAlign(TextAlign.Center)
-                   .width('100%')
-                   .height(60)
-               }
-               .width('100%')
-               .height(60)
-             }, (minute: number, index: number) => `${index}_${minute}`)
-           }
-           .width("45%")
-           .height(180)
-           .alignListItem(ListItemAlign.Center)
-           .scrollSnapAlign(ScrollSnapAlign.CENTER)
-           .scrollBar(BarState.Off)
-           .onScrollStop(() => {
-             const offset =
-               (this.timePickerType === 'start' ? this.startMinuteScroller : this.endMinuteScroller).currentOffset();
-             if (offset) {
-               const centerPosition = offset.yOffset + 90;
-               const selectedIndex = Math.floor(centerPosition / 60);
-               if (selectedIndex >= 0 && selectedIndex < this.minuteList.length) {
-                 if (this.timePickerType === 'start') {
-                   this.tempStartMinute = this.minuteList[selectedIndex];
-                 } else {
-                   this.tempEndMinute = this.minuteList[selectedIndex];
-                 }
-               }
-             }
-           })
-
-            }
-            .padding({ bottom: 20 })
-            .justifyContent(FlexAlign.Center)
-
-            Row({ space: 16 }) {
-              Button("取消")
-                .width("45%")
-                .height('50vp')
-                .backgroundColor("#DFE3E2")
-                .fontColor("#2C2F2F")
-                .borderRadius(25)
-                .onClick(() => {
-                  this.showTimePickerDialog = false;
-                });
-
-              Button("确定")
-                .width("45%")
-                .height(50)
-                .backgroundColor("#13EC5B")
-                .fontColor(Color.White)
-                .borderRadius(25)
-                .onClick(() => {
-                  if (this.timePickerType === 'start') {
-                    this.lightStartHour = this.tempStartHour;
-                    this.lightStartMinute = this.tempStartMinute;
-                  } else {
-                    this.lightEndHour = this.tempEndHour;
-                    this.lightEndMinute = this.tempEndMinute;
-                  }
-                  this.showTimePickerDialog = false;
-                });
-            }
-            .padding({ left: 24, right: 24, bottom: 24 })
-          }
-          .width("80%")
-          .backgroundColor("#F8FFF8")
-          .borderRadius(24)
-        }
-        .width('100%')
-        .height('100%')
-        .position({ x: 0, y: 0 })
-        .zIndex(999)
-      }
-
-
-
-    }
-    .backgroundColor(Color.Transparent)
-    .width('100%')
+      .backgroundColor(Color.Transparent)
+      .width('100%')
       .height('100%')
     }.hideTitleBar(true)
   }

@@ -4,7 +4,8 @@ import { Add } from './Add'
 import {Lrrigate} from './Lrrigate'
 import { promptAction } from '@kit.ArkUI';
 import { http } from '@kit.NetworkKit';
-import { DeviceRuntimeState, DeviceStateService } from '../common/DeviceStateService';
+import { GlobalState, GlobalStateService, LightSettingState } from '../service/GlobalStateService';
+import { preferences } from '@kit.ArkData';
 
 // ==================== 接口定义 ====================
 // 硬件阈值响应接口
@@ -45,7 +46,13 @@ interface HardwareLightUpdateResponse {
   LightDuration: number;
   DeviceID: string;
 }
-
+// 目标灌溉量上传响应接口
+interface TargetVolumeResponse {
+  status: string;
+  WaterVolumeTarget?: number;
+  DeviceID?: string;
+  message?: string;
+}
 // 硬件设备状态响应接口
 interface HardwareStateResponse {
   WaterState: boolean;
@@ -245,7 +252,7 @@ class HardwareService {
       // brightness已经是百分比值（0-100），直接传递
       let formData = `Brightness=${setting.brightness}&Red=${setting.red}&Green=${setting.green}&Blue=${setting.blue}&LightDuration=${setting.lightDuration}`;
 
-      // ✅ 新增：如果传入了开始/结束时间，则添加到请求中
+      // 如果传入了开始/结束时间，则添加到请求中
       if (startHour !== undefined && startMinute !== undefined) {
         formData += `&LightStartHour=${startHour}&LightStartMinute=${startMinute}`;
       }
@@ -276,7 +283,7 @@ class HardwareService {
       return false;
     }
   }
-  // ✅ 新增：获取完整光源设置（包含开始/结束时间）
+  // ：获取完整光源设置（包含开始/结束时间）
   async fetchFullLightSetting(): Promise<GeneratedTypeLiteralInterface_2 | null> {
     try {
       const url = `http://${this.deviceIp}/.netlify/functions/device/${this.deviceId}/light`;
@@ -541,7 +548,8 @@ export struct Equipment {
   @State deviceId: string = 'device_001';      // 设备ID
   @State deviceIp: string = '172.16.12.51';   // 设备IP地址
   @State isDeviceOn: boolean = true;           // 设备总开关状态（ON/OFF）
-
+  // 加这一行！绝杀自动回变
+  @State isManualToggle: boolean = false;
   // ==================== 服务实例 ====================
   private hardwareService: HardwareService = new HardwareService(this.deviceIp, this.deviceId);
   private cloudService: CloudService = new CloudService();
@@ -589,6 +597,12 @@ export struct Equipment {
   @State electricityDisplay: string = '95%';    // 电量显示
   @State signalDisplay: string = '强(85%)';     // 信号显示
   @State waterVolumeDisplay: string = '120L';   // 水量显示
+  @State totalElectricityUsed: number = 0;  // 累计用电量 (kWh)
+  @State totalWaterUsed: number = 0;        // 累计用水量 (L)
+  private totalUsagePreferences?: preferences.Preferences;
+  private readonly TOTAL_USAGE_KEY: string = 'total_usage';
+  private lastElectricity: number = 0;      // 上次记录的电量值
+  private lastWaterVolume: number = 0;      // 上次记录的水量值
   // 定时器
   private sensorTimer: number = -1;      // 传感器数据定时器
   private autoControlTimer: number = -1; // 自动控制定时器
@@ -597,9 +611,8 @@ export struct Equipment {
   // 防抖定时器
   private saveTimeout: number = -1;
   // 在 Equipment 组件内添加
-  private stateService: DeviceStateService = DeviceStateService.getInstance();
-  private isSyncingFromService: boolean = false;
-  private isListening: boolean = false;
+  private globalStateService: GlobalStateService = GlobalStateService.getInstance();
+  private isSyncingFromGlobal: boolean = false;
   // 计算实时颜色（总亮度 * RGB 色值）
   get currentColor():ResourceColor{
     return `rgb(${this.r}, ${this.g}, ${this.b})`;
@@ -612,13 +625,14 @@ export struct Equipment {
   private textInputController: TextInputController = new TextInputController();
 
   async aboutToAppear(): Promise<void> {
+    console.log('========== aboutToAppear 开始 ==========');
+    // 初始化累加数据存储
+    await this.initTotalUsageStorage();
+
+    // 先打印当前全局状态
+    const currentGlobal = this.globalStateService.getState();
+    console.log('当前全局状态 isDeviceOn:', currentGlobal.isDeviceOn);
     console.log('测试硬件连接...');
-    const result = await this.hardwareService.fetchLightSetting();
-    if (result) {
-      console.log('硬件连接正常:', result);
-    } else {
-      console.error('硬件连接失败');
-    }
     console.log('接收的数据',JSON.stringify(this.params));
     // 获取设备信息
     if (this.params['deviceId']) {
@@ -628,27 +642,33 @@ export struct Equipment {
       this.deviceIp = this.params['ipAddress'] as string;
     }
     console.log(`设备IP: ${this.deviceIp}, 设备ID: ${this.deviceId}`);
+    // ：从全局状态加载
+    await this.loadStateFromGlobal();
+    // ：监听全局状态变化
+    this.listenToGlobalChanges();
+
     // 初始化硬件服务
     this.hardwareService.updateDeviceInfo(this.deviceIp, this.deviceId);
-    // 从全局状态服务加载状态
-    this.loadStateFromService();
+    // 更新全局设备信息
+    await this.globalStateService.updateDeviceInfo(this.deviceId, this.deviceIp);
 
-    // 监听全局状态变化
-    this.listenToStateChanges();
+
     // 初始化阈值（从硬件获取，设置后不再修改）
-    this.initThresholds();
+   await this.initThresholds();
 
-    // 初始化设备状态
-  this.initDeviceState();
     // 加载传感器数据
-    this.loadSensorData();
-
+   await this.loadSensorData();
+    const result = await this.hardwareService.fetchLightSetting();
+    if (result) {
+      console.log('硬件连接正常:', result);
+    } else {
+      console.error('硬件连接失败');
+    }
     // 启动定时器：每10秒获取一次传感器数据
     this.sensorTimer = setInterval(() => {
+      if (this.isManualToggle) return;
       this.loadSensorData();
     }, 10000);
-
-
   }
   aboutToDisappear(): void {
     // 清理定时器
@@ -656,7 +676,83 @@ export struct Equipment {
     if (this.autoControlTimer !== -1) clearInterval(this.autoControlTimer);
     if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
   }
+  /**
+   * 初始化累加数据存储
+   */
+  async initTotalUsageStorage(): Promise<void> {
+    try {
+      const context = this.getUIContext().getHostContext();
+      if (!context) {
+        console.error('获取Context失败');
+        return;
+      }
+      this.totalUsagePreferences = await preferences.getPreferences(context, 'total_usage_prefs');
 
+      // 读取已累加的用电量和用水量
+      const savedElectricity = await this.totalUsagePreferences.get('total_electricity', 0) as number;
+      const savedWater = await this.totalUsagePreferences.get('total_water', 0) as number;
+
+      this.totalElectricityUsed = savedElectricity;
+      this.totalWaterUsed = savedWater;
+
+      console.log(`累计用电量: ${this.totalElectricityUsed} kWh, 累计用水量: ${this.totalWaterUsed} L`);
+    } catch (error) {
+      console.error('初始化累加存储失败:', error);
+    }
+  }
+
+  /**
+   * 保存累加数据到本地
+   */
+  async saveTotalUsage(): Promise<void> {
+    if (!this.totalUsagePreferences) return;
+    try {
+      await this.totalUsagePreferences.put('total_electricity', this.totalElectricityUsed);
+      await this.totalUsagePreferences.put('total_water', this.totalWaterUsed);
+      await this.totalUsagePreferences.flush();
+      console.log(`保存累加数据: 用电=${this.totalElectricityUsed} kWh, 用水=${this.totalWaterUsed} L`);
+    } catch (error) {
+      console.error('保存累加数据失败:', error);
+    }
+  }
+
+  /**
+   * 更新累加用电量和用水量
+   * @param currentElectricity 当前电量百分比
+   * @param currentWaterVolume 当前水量(L)
+   */
+  async updateTotalUsage(currentElectricity: number, currentWaterVolume: number): Promise<void> {
+    // 首次记录，只保存当前值，不累加
+    if (this.lastElectricity === 0 && this.lastWaterVolume === 0) {
+      this.lastElectricity = currentElectricity;
+      this.lastWaterVolume = currentWaterVolume;
+      console.log(`首次记录: 电量=${this.lastElectricity}%, 水量=${this.lastWaterVolume}L`);
+      return;
+    }
+
+    // 计算减少的电量（电量百分比差值，累加时按1% = 0.1 kWh估算，可根据实际情况调整）
+    const electricityDecrease = this.lastElectricity - currentElectricity;
+    if (electricityDecrease > 0) {
+      // 假设每1%电量对应0.1 kWh用电量（可根据实际硬件参数调整）
+      const electricityUsedKwh = electricityDecrease * 0.1;
+      this.totalElectricityUsed += electricityUsedKwh;
+      console.log(`用电量增加: ${electricityUsedKwh.toFixed(2)} kWh, 累计: ${this.totalElectricityUsed.toFixed(2)} kWh`);
+    }
+
+    // 计算减少的水量
+    const waterDecrease = this.lastWaterVolume - currentWaterVolume;
+    if (waterDecrease > 0) {
+      this.totalWaterUsed += waterDecrease;
+      console.log(`用水量增加: ${waterDecrease} L, 累计: ${this.totalWaterUsed} L`);
+    }
+
+    // 更新上次记录值
+    this.lastElectricity = currentElectricity;
+    this.lastWaterVolume = currentWaterVolume;
+
+    // 保存到本地
+    await this.saveTotalUsage();
+  }
   /**
    * 初始化阈值（从硬件获取，全局唯一，不再修改）
    */
@@ -664,7 +760,21 @@ export struct Equipment {
     try {
       const thresholds = await this.hardwareService.fetchThresholds();
       if (thresholds) {
-        this.thresholds = thresholds;
+        // 手动赋值
+        this.thresholds.co2Threshold = thresholds.co2Threshold;
+        this.thresholds.soilTempThreshold = thresholds.soilTempThreshold;
+        this.thresholds.soilHumidityThreshold = thresholds.soilHumidityThreshold;
+        this.thresholds.lightThreshold = thresholds.lightThreshold;
+        this.thresholds.waterVolumeThreshold = thresholds.waterVolumeThreshold;
+
+        // 同步到全局
+        await this.globalStateService.updateThresholds({
+          "co2Threshold": thresholds.co2Threshold,
+          "soilTempThreshold": thresholds.soilTempThreshold,
+          "soilHumidityThreshold": thresholds.soilHumidityThreshold,
+          "lightThreshold": thresholds.lightThreshold,
+          "waterVolumeThreshold": thresholds.waterVolumeThreshold
+        });
         console.log('从硬件获取阈值成功:', this.thresholds);
       } else {
         console.log('使用默认阈值:', this.thresholds);
@@ -674,22 +784,6 @@ export struct Equipment {
     }
   }
 
-  /**
-   * 初始化设备状态
-   */
-  async initDeviceState(): Promise<void> {
-    try {
-      const state = await this.hardwareService.fetchDeviceState();
-      if (state) {
-        this.deviceState = state;
-        this.isWaterOn = state.waterState;
-        this.isLightOn = state.lightState;
-        console.log('设备状态初始化成功:', this.deviceState);
-      }
-    } catch (error) {
-      console.error('获取设备状态失败:', error);
-    }
-  }
 
   /**
    * 加载传感器数据（从后端获取）
@@ -699,88 +793,76 @@ export struct Equipment {
       // 获取设备配置（电量、水量）
       const config = await this.cloudService.fetchDeviceConfig(this.deviceId);
       if (config) {
+        const newElectricity = this.cloudService.parseElectricity(config.electricity);
+        const newWaterVolume = this.cloudService.parseWaterVolume(config.waterVolume);
+
+        // 更新累加数据（在更新UI之前）
+        await this.updateTotalUsage(newElectricity, newWaterVolume);
+
         // 更新电量显示
         this.sensorData.electricity = this.cloudService.parseElectricity(config.electricity);
         this.electricityDisplay = config.electricity;
         // 更新水量显示
-        const newWaterVolume = this.cloudService.parseWaterVolume(config.waterVolume);
         this.sensorData.waterVolume = newWaterVolume;
         this.waterVolumeDisplay = config.waterVolume;
 
         console.log(`传感器数据: 电量=${config.electricity}, 水量=${config.waterVolume}`);
 
         console.log(`当前水容量=${newWaterVolume}L, 目标灌溉量=${this.currentPour}L`);
-
+        // 同步传感器数据到全局
+        await this.globalStateService.updateSensorData({
+          "electricity": this.sensorData.electricity,
+          "waterVolume": this.sensorData.waterVolume
+        });
       }
 
-      // 注意：土壤湿度和光照强度需要从其他接口获取
-      // 这里使用模拟数据，实际应根据您的硬件接口替换
-      // 如果有获取土壤湿度和光照的接口，请在此处调用
-      this.sensorData.soilHumidity = 65;  // 示例值
-      this.sensorData.light = 600;        // 示例值
+
       // 获取土壤湿度和光照数据
       const soilAndLight = await this.cloudService.fetchSoilAndLightData();
       if (soilAndLight) {
         this.sensorData.soilHumidity = soilAndLight.soilHumidity;
         this.sensorData.light = soilAndLight.light;
         console.log(`土壤湿度=${soilAndLight.soilHumidity}%, 光照=${soilAndLight.light}lx`);
+        //同步传感器数据到全局
+        await this.globalStateService.updateSensorData({
+          "soilHumidity": this.sensorData.soilHumidity,
+          "light": this.sensorData.light
+        });
       }
     } catch (error) {
       console.error('加载传感器数据失败:', error);
     }
   }
-  /**
-   * 从全局服务加载状态
-   */
-  private loadStateFromService(): void {
-    const savedState = this.stateService.getState();
-    this.isSyncingFromService = true;
+  // 从全局状态加载（不使用展开运算符）
+  private async loadStateFromGlobal(): Promise<void> {
+    this.isSyncingFromGlobal = true;
 
-    this.isDeviceOn = savedState.isDeviceOn;
-    this.isWaterOn = savedState.isWaterOn;
-    this.isLightOn = savedState.isLightOn;
-    this.currentLED = savedState.currentLED;
-    this.r = savedState.r;
-    this.g = savedState.g;
-    this.b = savedState.b;
-    this.currentColorValue = savedState.currentColorValue;
+    const globalState = this.globalStateService.getState();
 
-    // 同步输入框
-    this.rInput = this.r.toString();
-    this.gInput = this.g.toString();
-    this.bInput = this.b.toString();
+    this.isDeviceOn = globalState.isDeviceOn;
+    this.isWaterOn = globalState.isWaterOn;
+    this.currentPour = globalState.targetWaterVolume;
 
-    this.isSyncingFromService = false;
+    this.isLightOn = globalState.lightSetting.isLightOn;
+    this.currentLED = globalState.lightSetting.brightness;
+    this.r = globalState.lightSetting.red;
+    this.g = globalState.lightSetting.green;
+    this.b = globalState.lightSetting.blue;
 
-    console.log('从全局服务加载状态:', JSON.stringify(savedState));
-  }
+    // 手动赋值 deviceState，不使用展开运算符
+    this.deviceState.waterState = globalState.deviceState.waterState;
+    this.deviceState.lightState = globalState.deviceState.lightState;
+    this.deviceState.airState = globalState.deviceState.airState;
+    this.deviceState.autoModeState = globalState.deviceState.autoModeState;
 
-  /**
-   * 监听全局状态变化
-   */
-  private listenToStateChanges(): void {
-    this.stateService.addListener(this.onStateChange.bind(this));
-    this.isListening = true;
-  }
+    // 手动赋值 sensorData，不使用展开运算符
+    this.sensorData.soilHumidity = globalState.sensorData.soilHumidity;
+    this.sensorData.light = globalState.sensorData.light;
+    this.sensorData.electricity = globalState.sensorData.electricity;
+    this.sensorData.waterVolume = globalState.sensorData.waterVolume;
 
-  /**
-   * 全局状态变化时的回调
-   */
-  private onStateChange(state: DeviceRuntimeState): void {
-    if (this.isSyncingFromService) return;
-
-    console.log('收到全局状态变化:', JSON.stringify(state));
-
-    this.isSyncingFromService = true;
-
-    this.isDeviceOn = state.isDeviceOn;
-    this.isWaterOn = state.isWaterOn;
-    this.isLightOn = state.isLightOn;
-    this.currentLED = state.currentLED;
-    this.r = state.r;
-    this.g = state.g;
-    this.b = state.b;
-    this.currentColorValue = state.currentColorValue;
+    this.electricityDisplay = `${globalState.sensorData.electricity}%`;
+    this.waterVolumeDisplay = `${globalState.sensorData.waterVolume}L`;
 
     this.rInput = this.r.toString();
     this.gInput = this.g.toString();
@@ -788,38 +870,66 @@ export struct Equipment {
 
     this.updateColor();
 
-    this.isSyncingFromService = false;
+    this.isSyncingFromGlobal = false;
+
+    console.log('[Equipment] 从全局状态加载完成');
   }
 
-  /**
-   * 同步状态到全局服务
-   */
-  private syncStateToService(): void {
-    if (this.isSyncingFromService) return;
+  // 监听全局状态变化（不使用展开运算符）
+  private listenToGlobalChanges(): void {
+    this.globalStateService.addListener((newState: GlobalState) => {
+      // 原有开关同步
+      this.isDeviceOn = newState.isDeviceOn;
 
-    this.isSyncingFromService = true;
+      console.log('[Equipment] 收到全局状态变化');
 
-    this.stateService.updateState({
-      isDeviceOn: this.isDeviceOn,
-      isWaterOn: this.isWaterOn,
-      isLightOn: this.isLightOn,
-      currentLED: this.currentLED,
-      r: this.r,
-      g: this.g,
-      b: this.b,
-      currentColorValue: this.currentColorValue
+      this.isSyncingFromGlobal = true;
+      this.isDeviceOn = newState.isDeviceOn;
+
+      this.isWaterOn = newState.isWaterOn;
+      this.currentPour = newState.targetWaterVolume;
+      this.isLightOn = newState.lightSetting.isLightOn;
+      this.currentLED = newState.lightSetting.brightness;
+      if (newState.lightSetting) {
+      this.r = newState.lightSetting.red;
+      this.g = newState.lightSetting.green;
+      this.b = newState.lightSetting.blue;
+      this.rInput = this.r.toString();
+      this.gInput = this.g.toString();
+      this.bInput = this.b.toString();
+      this.updateColor();
+    }
+      // 手动赋值 deviceState
+      this.deviceState.waterState = newState.deviceState.waterState;
+      this.deviceState.lightState = newState.deviceState.lightState;
+      this.deviceState.airState = newState.deviceState.airState;
+      this.deviceState.autoModeState = newState.deviceState.autoModeState;
+
+      // 手动赋值 sensorData
+      this.sensorData.soilHumidity = newState.sensorData.soilHumidity;
+      this.sensorData.light = newState.sensorData.light;
+      this.sensorData.electricity = newState.sensorData.electricity;
+      this.sensorData.waterVolume = newState.sensorData.waterVolume;
+
+
+
+      this.isSyncingFromGlobal = false;
     });
-
-    this.isSyncingFromService = false;
   }
-  /**
-   * 设备总开关控制（ON/OFF）
-   */
-  async toggleDeviceOnOff(): Promise<void> {
-    this.isDeviceOn = !this.isDeviceOn;
 
-    if (!this.isDeviceOn) {
-      // 关闭设备时，同时关闭所有执行器
+  async toggleDeviceOnOff(): Promise<void> {
+
+    // 手动点击了开关 → 锁定状态！定时器绝对不能改！
+    this.isManualToggle = true;
+    // 直接取反，强制修改本地+全局，不接受任何覆盖
+    const newState = !this.isDeviceOn;
+    this.isDeviceOn = newState;
+
+    // 同步全局（仪表盘立刻更新）
+    await this.globalStateService.updateState({ "isDeviceOn": newState});
+    // 3. 执行硬件指令
+    if (!newState) {
+      // 关闭：直接关所有，彻底停止
       await this.hardwareService.sendCommand('water-off');
       await this.hardwareService.sendCommand('light-off');
       await this.hardwareService.sendCommand('Auto-off');
@@ -827,18 +937,53 @@ export struct Equipment {
       this.isLightOn = false;
       this.showToast('设备已关闭');
     } else {
-      // 开启设备时，开启自动模式
+      // 开启
       await this.hardwareService.sendCommand('Auto');
       this.showToast('设备已开启');
     }
-
-    // 更新Yibiaopan页面状态
-    this.updateYibiaopanStatus();
-    this.syncStateToService();
+    // 3秒后解锁（防止误操作，不影响正常使用）
+    setTimeout(() => {
+      this.isManualToggle = false;
+    }, 3000);
   }
 
   // ==================== 水泵控制逻辑 ====================
+  /**
+   * 上传目标灌溉量到硬件
+   */
+  async uploadTargetWaterVolume(volume: number): Promise<boolean> {
+    try {
+      const url = `http://${this.deviceIp}/.netlify/functions/device/${this.deviceId}/targets`;
+      const formData = `WaterVolume=${volume}`;
+      console.info('[硬件接口] 上传目标灌溉量:', url, formData);
 
+      const httpRequest = http.createHttp();
+      const response = await httpRequest.request(url, {
+        method: http.RequestMethod.POST,
+        header: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        extraData: formData,
+        connectTimeout: 10000,
+        readTimeout: 10000
+      });
+
+      if (response.responseCode === 200) {
+        const data = JSON.parse(response.result as string) as TargetVolumeResponse;
+        httpRequest.destroy();
+        if (data.status === 'success') {
+          console.log(`目标灌溉量上传成功: ${volume}L`);
+          return true;
+        } else {
+          console.error('目标灌溉量上传失败:', data.message);
+          return false;
+        }
+      }
+      httpRequest.destroy();
+      return false;
+    } catch (error) {
+      console.error('[硬件接口] 上传目标灌溉量失败:', JSON.stringify(error));
+      return false;
+    }
+  }
   /**
    * 手动控制浇水开关
    * 开启前检查：目标灌溉量不能超过当前水容量
@@ -863,7 +1008,13 @@ export struct Equipment {
         this.isWaterOn = false;
         return;
       }
-
+      // 上传目标灌溉量到硬件
+      const uploadSuccess = await this.uploadTargetWaterVolume(this.currentPour);
+      if (!uploadSuccess) {
+        this.showToast('目标灌溉量上传失败，请检查网络');
+        this.isWaterOn = false;
+        return;
+      }
       // 记录开始灌溉时的水量
       this.irrigationStartWaterVolume = this.sensorData.waterVolume;
       console.log(`[灌溉开始] 当前水容量=${this.sensorData.waterVolume}L，目标灌溉量=${this.currentPour}L`);
@@ -879,7 +1030,9 @@ export struct Equipment {
       this.isWaterOn = result.waterState;
       this.showToast(isOn ? '浇水已开启' : '浇水已关闭');
     }
-    this.syncStateToService();
+    // 同步到全局状态
+    await this.globalStateService.updateWaterState(this.isWaterOn);
+    await this.globalStateService.updateDeviceState({ "waterState": this.isWaterOn });
   }
 
   /**
@@ -947,7 +1100,11 @@ export struct Equipment {
       this.isLightOn = false;
       return;
     }
-
+    //  关键修复：如果是开启补光灯，先保存当前的亮度/RGB设置到硬件
+    if (isOn) {
+      console.log('[补光] 开启前保存亮度/RGB设置');
+      await this.saveLightSetting();
+    }
     const cmd = isOn ? 'light' : 'light-off';
     const result = await this.hardwareService.sendCommand(cmd);
     if (result) {
@@ -956,7 +1113,15 @@ export struct Equipment {
       this.updateColor();
       this.showToast(isOn ? '补光已开启' : '补光已关闭');
     }
-    this.syncStateToService();
+    // 同步到全局状态
+    await this.globalStateService.updateLightSetting(
+      this.currentLED,
+      this.r,
+      this.g,
+      this.b,
+      this.isLightOn
+    );
+    await this.globalStateService.updateDeviceState({ "lightState": this.isLightOn });
   }
 
 
@@ -969,6 +1134,13 @@ export struct Equipment {
   async saveLightSetting(): Promise<void> {
     console.log('========== saveLightSetting 被调用 ==========');
     console.log(`当前值: 亮度=${this.currentLED}%, RGB=(${this.r},${this.g},${this.b})`);
+    // 同步到全局状态
+    await this.globalStateService.updateLightSetting(
+      this.currentLED,
+      this.r,
+      this.g,
+      this.b,
+      this.isLightOn);
     if (!this.isDeviceOn) {
       console.log('设备未开启，不保存补光设置');
       return;
@@ -988,31 +1160,12 @@ export struct Equipment {
     } else {
       console.error('保存补光设置失败');
     }
-    this.syncStateToService();
   }
 
 
   // ==================== UI更新方法 ====================
 
-  /**
-   * 更新Yibiaopan页面的运行状态
-   */
-  updateYibiaopanStatus(): void {
-    // 通过NavigationManager传递状态到Yibiaopan页面
-    const status: GeneratedObjectLiteralInterface_1 = {
-      isRunning: this.isDeviceOn,
-      waterState: this.isWaterOn,
-      lightState: this.isLightOn
-    };
 
-    // 更新全局状态或通过事件总线传递
-    // 这里使用AppStorage或globalThis来共享状态
-    if (typeof globalThis !== 'undefined') {
-      globalThis.deviceStatus = status;
-    }
-
-    console.log('更新仪表盘状态:', status);
-  }
 
   /**
    * 显示全局通知
@@ -1047,7 +1200,7 @@ export struct Equipment {
       if (inputSetter) {
         inputSetter(num.toString());  // 有效时更新输入框显示
       }
-      this.updateColor();  // ✅ 确保这行存在
+      this.updateColor();
       if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
       this.saveTimeout = setTimeout(() => {
         this.saveLightSetting();
@@ -1117,8 +1270,8 @@ export struct Equipment {
           Scroll() {
             Column() {
               Row({ space: 20 }) {
-                this.rowCard('app.media.electric', '用电量', '124', 'kWh')
-                this.rowCard('app.media.water', '用水量', '1450', 'L')
+                this.rowCard('app.media.electric', '用电量',  this.totalElectricityUsed.toFixed(1), 'kWh')
+                this.rowCard('app.media.water', '用水量',  this.totalWaterUsed.toString(), 'L')
               }.margin({top:10})
 
               Text('控制中心')
@@ -1243,9 +1396,8 @@ export struct Equipment {
                     .width('48vp')
                     .height('30vp')
                     .selectedColor('#13EC5B')
-                    .onChange((isOn: boolean) => {
-                      this.isLightOn= isOn;
-                      this.updateColor();
+                    .onChange(async (isOn: boolean) => {
+                      await this.toggleLight(isOn);
                       console.log('开关：', isOn);
                     })
                 }
@@ -1297,13 +1449,12 @@ export struct Equipment {
                   .fill(this.currentColorValue)
                   .margin({top:20})
 
-                // 4. RGB 三列滑块 + 输入框
                 Row({space:20}) {
                   // R 通道
                   this.buildRGBChannel('R', '#ef4444', this.r, this.rInput, (val) => {
                     console.log('Setting R:', val);
                     this.r = val;
-                    this.rInput = val.toString();
+                    this.rInput = val.toString(); // 输入框实时跟随滑块
                     this.updateColor();
                     // 防抖保存
                     if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
@@ -1316,21 +1467,17 @@ export struct Equipment {
                     const num = parseInt(val, 10);
                     if (!isNaN(num) && num >= 0 && num <= 255) {
                       this.r = num;
-                      this.updateColor();  // 添加这行
-                      // 防抖保存
-                      if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
-                      this.saveTimeout = setTimeout(() => {
-                        this.saveLightSetting();
-                      }, 500);
+                      this.rInput = num.toString(); // 强制同步输入框显示（核心修复）
+                      this.updateColor();
                     }
-                    this.syncRGBValue(val, (v) => this.r = v, this.r);
+                    // 删掉干扰的 syncRGBValue
                   })
 
                   // G 通道
                   this.buildRGBChannel('G', '#22c55e', this.g, this.gInput, (val) => {
                     console.log('Setting G:', val);
                     this.g = val;
-                    this.gInput = val.toString();
+                    this.gInput = val.toString(); // 输入框实时跟随滑块
                     this.updateColor();
                     if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
                     this.saveTimeout = setTimeout(() => {
@@ -1342,21 +1489,17 @@ export struct Equipment {
                     const num = parseInt(val, 10);
                     if (!isNaN(num) && num >= 0 && num <= 255) {
                       this.g = num;
-                      this.updateColor();  // 添加这行
-                      // 防抖保存
-                      if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
-                      this.saveTimeout = setTimeout(() => {
-                        this.saveLightSetting();
-                      }, 500);
+                      this.gInput = num.toString(); // 强制同步输入框显示（核心修复）
+                      this.updateColor();
                     }
-                    this.syncRGBValue(val, (v) => this.g = v, this.g);
+                    // 删掉干扰的 syncRGBValue
                   })
 
                   // B 通道
                   this.buildRGBChannel('B', '#3b82f6', this.b, this.bInput, (val) => {
                     console.log('Setting B:', val);
                     this.b = val;
-                    this.bInput = val.toString();
+                    this.bInput = val.toString(); // 输入框实时跟随滑块
                     this.updateColor()
                     if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
                     this.saveTimeout = setTimeout(() => {
@@ -1368,14 +1511,10 @@ export struct Equipment {
                     const num = parseInt(val, 10);
                     if (!isNaN(num) && num >= 0 && num <= 255) {
                       this.b = num;
-                      this.updateColor();  // 添加这行
-                      // 防抖保存
-                      if (this.saveTimeout !== -1) clearTimeout(this.saveTimeout);
-                      this.saveTimeout = setTimeout(() => {
-                        this.saveLightSetting();
-                      }, 500);
+                      this.bInput = num.toString(); // 强制同步输入框显示（核心修复）
+                      this.updateColor();
                     }
-                    this.syncRGBValue(val, (v) => this.b = v, this.b);
+                    // 删掉干扰的 syncRGBValue
                   })
                 }
                 .width('95%')
@@ -1447,8 +1586,9 @@ export struct Equipment {
                   .blockBorderColor(Color.White)
                   .blockBorderWidth(3)
                   .borderRadius(16)
-                  .onChange((value: number) => {
+                  .onChange(async (value: number) => {
                     this.currentPour = value;
+                    await this.globalStateService.updateWaterState(this.isWaterOn, this.currentPour);
                   })
                   .margin({ top: 15 })
 
